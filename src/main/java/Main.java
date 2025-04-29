@@ -38,6 +38,7 @@ public class Main {
             String specified = config.getStr("specified");
             String where = config.getStr("where");
             String deleteWhere = config.getStr("deleteWhere");
+            String cycle = config.getStr("cycle");
             int hourBegin = config.getInt("hourBegin");
             int minuteBegin = config.getInt("minuteBegin");
             int tableDispatchBatchSize = config.getInt("tableDispatchBatchSize");
@@ -139,7 +140,7 @@ public class Main {
                 dolphinSchedulerTool.createProcessDefinition(dpProjectCode, dpProcessDefinition);
                 dolphinSchedulerTool.release(dpProjectCode, dpProcessDefinition.getCode(), "ONLINE");
                 String schedule_id = dolphinSchedulerTool.createSchedule(dpProjectCode, dpProcessDefinition.getCode(),
-                        getCron(hourBegin, minuteBegin, tableDispatchBatchSize, tableDispatchBatchInterval, currentTableNum), null);
+                        getCron(hourBegin, minuteBegin, tableDispatchBatchSize, tableDispatchBatchInterval, currentTableNum, cycle), null);
                 dolphinSchedulerTool.releaseSchedule(dpProjectCode, schedule_id, "online");
                 //将工作流立即执行一次
                 if (executeOnce.equalsIgnoreCase("yes") || executeOnce.equalsIgnoreCase("true")) {
@@ -151,14 +152,19 @@ public class Main {
         }
     }
 
-    private static String getCron(int hourBegin, int minuteBegin, int tableDispatchBatchSize,
-                                  int tableDispatchBatchInterval, int currentTableNum) {
+    private static String getCron(int hourBegin, int minuteBegin, int tableDispatchBatchSize, int tableDispatchBatchInterval, int currentTableNum, String cycle) {
         String cron = "0 a b * * ? *";
         int total = (currentTableNum / tableDispatchBatchSize) * tableDispatchBatchInterval;
         int hour = (total / 60) + hourBegin;
         int minute = (total % 60) + minuteBegin;
+        if (cycle.contains("hour")) {
+            String hourCycle = cycle.substring("hour:".length());
+            return cron.replace("a", minute + "").replace("b", hour + "/" + hourCycle);
+        } else if (cycle.contains("minute")) {
+            String minuteCycle = cycle.substring("minute:".length());
+            return cron.replace("a", minute + "/" + minuteCycle).replace("b", hour + "/1");
+        }
         return cron.replace("a", minute + "").replace("b", hour + "");
-
     }
 
     private static List<String> getTableFields(String jdbcUrl, String userName, String password, String tableName) {

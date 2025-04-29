@@ -15,6 +15,7 @@
 "specified":"99 as id,'66' as tenant_no",//直接指定值字段，用逗号分隔，形式为xx as xx,xx as xx  
 "where":"tenant_no = '15'",  
 "deleteWhere":"1=1",//值为"truncate"或"1=1"，则清空表；为空字符串""或"1=2"则不删除任何数据；为其他内容则作为删除过滤条件  
+"cycle":"minute:15",//调度周期，不填默认为每天，"minute:15"代表每15分钟执行一次，"hour:2"代表每2小时执行一次  
 "hourBegin":0,  
 "minuteBegin":10,  
 "tableDispatchBatchSize":2,  
