@@ -10,9 +10,12 @@ import cn.hutool.json.JSONObject;
 import constant.Constant;
 import dolphinscheduler.DolphinSchedulerTool;
 import entity.*;
+import org.postgresql.util.PSQLException;
 
 import java.sql.*;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Main {
     public static void main(String[] args) {
@@ -26,12 +29,21 @@ public class Main {
                 throw new RuntimeException("读取配置文件失败，configPath:" + configPath);
             }
             JSONObject config = new JSONObject(configStr);
-            String inputPgHostPort = config.getStr("inputPgHostPort");
-            String inputPgDataBase = config.getStr("inputPgDataBase");
+            String inputJdbcUrl = config.getStr("inputJdbcUrl");
+            Pattern pattern = Pattern.compile("jdbc:([^:]+):");
+            Matcher readerMatcher = pattern.matcher(inputJdbcUrl);
+            String readerType = "";
+            if (readerMatcher.find()) {
+                readerType = readerMatcher.group(1) + "reader";
+            }
             String inputPgUserName = config.getStr("inputPgUserName");
             String inputPgPassword = config.getStr("inputPgPassword");
-            String outputPgHostPort = config.getStr("outputPgHostPort");
-            String outputPgDataBase = config.getStr("outputPgDataBase");
+            String outputJdbcUrl = config.getStr("outputJdbcUrl");
+            Matcher writerMatcher = pattern.matcher(outputJdbcUrl);
+            String writerType = "";
+            if (writerMatcher.find()) {
+                writerType = writerMatcher.group(1) + "writer";
+            }
             String outputPgUserName = config.getStr("outputPgUserName");
             String outputPgPassword = config.getStr("outputPgPassword");
             int errorLimit = config.getInt("errorLimit");
@@ -46,8 +58,6 @@ public class Main {
             String executeOnce = config.getStr("executeOnce");
             String prefix = config.getStr("prefix");
             String tables = config.getStr("tables");
-            String inputJdbcUrl = "jdbc:postgresql://" + inputPgHostPort + "/" + inputPgDataBase;
-            String outputJdbcUrl = "jdbc:postgresql://" + outputPgHostPort + "/" + outputPgDataBase;
             // 海豚调度其工作类
             String dpHttpUrl = config.getStr("dpHttpUrl");
             String dpToken = config.getStr("dpToken");
@@ -104,15 +114,17 @@ public class Main {
                     preSql1 = "delete from " + OutTableName + " where " + deleteWhere;
                 }
                 //String postSql1 = "vacuum full " + tableName;
-                String querySql = "select " + StrUtil.join(",", columnList4In) + " from " + tableName + " where " + where;
+                String querySql = "select " + StrUtil.join(",", columnList4In) + " from " + tableName + (StrUtil.isEmpty(where) ? "" : " where " + where);
                 String outputColumn = StrUtil.join(",", columnList4Out);
 
                 // 拼接param
                 Map<String, Object> param = new HashMap<>();
+                param.put("readerType", readerType);
                 param.put("inputPgUserName", inputPgUserName);
                 param.put("inputPgPassword", inputPgPassword);
                 param.put("querySql", querySql);
                 param.put("inputJdbcUrl", inputJdbcUrl);
+                param.put("writerType", writerType);
                 param.put("outputPgUserName", outputPgUserName);
                 param.put("outputPgPassword", outputPgPassword);
                 param.put("outputColumn", outputColumn);
@@ -181,7 +193,7 @@ public class Main {
                     ret.add(metaData.getColumnName(i));
                 }
                 resultSet.close();
-            } catch (org.postgresql.util.PSQLException e) {
+            } catch (Exception e) {
                 System.err.println("表 " + tableName + " 不存在，跳过");
                 return ret;
             }

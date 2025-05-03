@@ -13,7 +13,7 @@
     "content": [
       {
         "reader": {
-          "name": "postgresqlreader",
+          "name": "${readerType}",
           "parameter": {
             "username": "${inputPgUserName}",
             "password": "${inputPgPassword}",
@@ -31,7 +31,7 @@
           }
         },
         "writer": {
-          "name": "postgresqlwriter",
+          "name": "${writerType}",
           "parameter": {
             "username": "${outputPgUserName}",
             "password": "${outputPgPassword}",

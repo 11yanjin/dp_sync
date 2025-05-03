@@ -24,6 +24,11 @@
             <artifactId>postgresql</artifactId>
             <version>42.4.1</version>
         </dependency>
+            <dependency>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>8.0.26</version> <!-- 可根据需求选择合适版本 -->
+            </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
