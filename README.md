@@ -5,11 +5,11 @@
 "dpProjectName":"数据同步3",  
 "dpProjectCode":"",  
 "inputJdbcUrl": "jdbc:postgresql://192.168.10.12:5432/pgtest",  
-"inputPgUserName":"postgres",  
-"inputPgPassword":"postgres",  
+"inputUserName":"postgres",  
+"inputPassword":"postgres",  
 "outputJdbcUrl": "jdbc:mysql://192.168.10.11:3306/test?characterEncoding=UTF-8",  
-"outputPgUserName":"root",  
-"outputPgPassword":"root",  
+"outputUserName":"root",  
+"outputPassword":"root",  
 "errorLimit":0, //脏数据条数最大值，主键或唯一键重复即脏数据   
 "specified":"99 as id,'张三' as name", //直接指定值字段，用逗号分隔，形式为xx as xx,xx as xx  
 "where":"sex='男'", //来源表过滤条件，不填则全部同步  
@@ -26,3 +26,7 @@
 
 可以接一个projectCode参数，如果有参数，则下线该项目下所有工作流，方便后续删除，如：
 java -jar dp_pg_sync-1.jar 17391796121440
+可以接CreateTable参数，在去向数据库自动建表，含主键、唯一键等信息，如：
+java -jar dp_pg_sync-1.jar CreateTable
+可以接CreateTableNoKey参数，在去向数据库自动建表，但不含主键、唯一键等信息，如：
+java -jar dp_pg_sync-1.jar CreateTableNoKey

@@ -15,8 +15,8 @@
         "reader": {
           "name": "${readerType}",
           "parameter": {
-            "username": "${inputPgUserName}",
-            "password": "${inputPgPassword}",
+            "username": "${inputUserName}",
+            "password": "${inputPassword}",
             "where": "",
             "connection": [
               {
@@ -33,8 +33,8 @@
         "writer": {
           "name": "${writerType}",
           "parameter": {
-            "username": "${outputPgUserName}",
-            "password": "${outputPgPassword}",
+            "username": "${outputUserName}",
+            "password": "${outputPassword}",
             "column": [
               ${outputColumn}
             ],

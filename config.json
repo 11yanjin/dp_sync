@@ -5,11 +5,11 @@
   "dpProjectName": "postgresql2mysql",
   "dpProjectCode": "",
   "inputJdbcUrl": "jdbc:postgresql://192.168.10.12:5432/pgtest",
-  "inputPgUserName": "postgres",
-  "inputPgPassword": "postgres",
+  "inputUserName": "postgres",
+  "inputPassword": "postgres",
   "outputJdbcUrl": "jdbc:mysql://192.168.10.11:3306/test?characterEncoding=UTF-8",
-  "outputPgUserName": "root",
-  "outputPgPassword": "root",
+  "outputUserName": "root",
+  "outputPassword": "root",
   "errorLimit": 0,
   "specified": "",
   "where": "",
@@ -20,6 +20,6 @@
   "tableDispatchBatchSize": 2,
   "tableDispatchBatchInterval": 3,
   "executeOnce": "yes",
-  "prefix": "",
-  "tables": "o_full_customers"
+  "prefix": "o_full_",
+  "tables": "test1,ff,table1,sys_user"
 }
