@@ -24,9 +24,9 @@
 "tables":"test1,ff,table1,sys_user"  
 }
 
-可以接一个projectCode参数，如果有参数，则下线该项目下所有工作流，方便后续删除，如：
-java -jar dp_pg_sync-1.jar 17391796121440
-可以接CreateTable参数，在去向数据库自动建表，含主键、唯一键等信息，如：
-java -jar dp_pg_sync-1.jar CreateTable
-可以接CreateTableNoKey参数，在去向数据库自动建表，但不含主键、唯一键等信息，如：
+可以接一个projectCode参数，如果有参数，则下线该项目下所有工作流，方便后续删除，如：  
+java -jar dp_pg_sync-1.jar 17391796121440  
+可以接CreateTable参数，在去向数据库自动建表，含主键、唯一键等信息，如：  
+java -jar dp_pg_sync-1.jar CreateTable  
+可以接CreateTableNoKey参数，在去向数据库自动建表，但不含主键、唯一键等信息，如：  
 java -jar dp_pg_sync-1.jar CreateTableNoKey
