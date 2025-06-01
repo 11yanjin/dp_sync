@@ -63,7 +63,7 @@ public class CreateTable {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 
@@ -76,6 +76,10 @@ public class CreateTable {
                     .replaceAll("\\bDOUBLE\\b", "float8")
                     .replaceAll("\\bDATETIME\\b", "timestamp")
                     .replaceAll("\\bTIMESTAMP\\b", "timestamptz")
+                    .replaceAll("\\bTINYblob\\b", "bytea")
+                    .replaceAll("\\bBLOB\\b", "bytea")
+                    .replaceAll("\\bMEDIUMBLOB\\b", "bytea")
+                    .replaceAll("\\bLONGBLOB\\b", "bytea")
                     .replaceAll(" COMMENT '(?:''|[^'])*'", "");
         } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
@@ -83,33 +87,39 @@ public class CreateTable {
                     .replaceAll("\\btimestamp\\b", "datetime")
                     .replaceAll("\\btimestamptz\\b", "timestamp")
                     .replaceAll("\\bfloat4\\b", "float")
-                    .replaceAll("\\bfloat8\\b", "double");
+                    .replaceAll("\\bfloat8\\b", "double")
+                    .replaceAll("\\bbytea\\b", "longblob");
         } else
             return ddl.toString();
     }
 
-    public static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password, String tableName,
-                                                 String prefix, boolean isRequiresKey) throws SQLException {
+    public static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password, String tableName, String prefix, boolean isRequiresKey) throws SQLException {
         String schema = null;
         String actualTableName = tableName; //用于分离tableName和schema
-
         // 解析schema和表名
         if (tableName.contains(".")) {
             String[] parts = tableName.split("\\.", 2);
             schema = parts[0];
             actualTableName = parts[1];
         }
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, userName, password)) {
+        Properties props = new Properties();
+        props.setProperty("user", userName);
+        props.setProperty("password", password);
+        props.setProperty("useInformationSchema", "true");//默认为false，mysql需改为true才能获取表名注释
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, props)) {
             DatabaseMetaData metaData = conn.getMetaData();
             List<String> columns = new ArrayList<>();
             LinkedHashMap<String, String> Comments = new LinkedHashMap<>(); //postgresql需单独收集字段注释
             List<String> serialColumnName = new ArrayList<>();//mysql建表语句使用serial，无需手动加上UNIQUE，用于后面排除DDL的UNIQUE
 
             String databaseProductName = metaData.getDatabaseProductName();
-            ResultSet tableRs = metaData.getTables(null, schema, actualTableName, new String[]{"TABLE", "VIEW"});
-            String tableComment = tableRs.getString("REMARKS").replace("'", "''");
-            Comments.put(actualTableName, tableComment);
+            String tableComment = "";//postgresql即使没有表名注释也会执行一个空字符串注释
+            try (ResultSet tableRs = metaData.getTables(null, schema, actualTableName, new String[]{"TABLE", "VIEW"})) {
+                if (tableRs.next()) {
+                    tableComment = tableRs.getString("REMARKS").replace("'", "''");
+                    Comments.put(actualTableName, tableComment);
+                }
+            }
             try (ResultSet columnsRs = metaData.getColumns(null, schema, actualTableName, null)) {
                 while (columnsRs.next()) {
                     String columnName = columnsRs.getString("COLUMN_NAME");
@@ -122,8 +132,8 @@ public class CreateTable {
                     String isAutoIncrement = columnsRs.getString("IS_AUTOINCREMENT");
                     StringBuilder columnDef = new StringBuilder();
                     String lowerType = typeName.toLowerCase();
-                    // 收集注释信息
-                    if (!remarks.trim().isEmpty()) {
+                    // 收集注释信息，postgresql无注释时为null
+                    if (remarks != null && !remarks.trim().isEmpty()) {
                         remarks = remarks.replace("'", "''");//输入时不接受注释内容有单独的'，可写成''，会转义为'
                         Comments.put(columnName, remarks);
                     }
@@ -179,7 +189,7 @@ public class CreateTable {
                                 columnDef.append(" DEFAULT ").append(defaultValue);
                         }
                     }
-                    if (!remarks.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
+                    if (remarks != null && !remarks.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
                         columnDef.append(" COMMENT '").append(remarks).append("'");
                     }
                     columns.add(columnDef.toString());
@@ -248,7 +258,7 @@ public class CreateTable {
                 }
             }
             if (!tableComment.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
-                ddl.append("\n) COMMENT '").append(tableComment).append("'");
+                ddl.append("\n) COMMENT '").append(tableComment).append("';");
             } else {
                 ddl.append("\n);");
             }

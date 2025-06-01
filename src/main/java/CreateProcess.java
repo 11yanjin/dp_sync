@@ -1,4 +1,3 @@
-import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.template.Template;
 import cn.hutool.extra.template.TemplateConfig;
@@ -67,7 +66,7 @@ public class CreateProcess {
         int currentTableNum = 0;
         for (String tableName : split1) {
             List<String> tableFields = getTableFields(inputJdbcUrl, inputUserName, inputPassword, tableName);
-            if (tableFields.size() == 0) {
+            if (tableFields.isEmpty()) {
                 continue;
             }
             List<String> columnList4In = new ArrayList<>();
@@ -85,7 +84,7 @@ public class CreateProcess {
             String preSql1;
             if (deleteWhere.equals("truncate") || deleteWhere.equals("1=1")) {
                 preSql1 = "truncate table " + OutTableName;
-            } else if (deleteWhere.equals("") || deleteWhere.equals("1=2")) {
+            } else if (deleteWhere.isEmpty() || deleteWhere.equals("1=2")) {
                 preSql1 = null;
             } else {
                 preSql1 = "delete from " + OutTableName + " where " + deleteWhere;
@@ -168,28 +167,21 @@ public class CreateProcess {
     }
 
     private static List<String> getTableFields(String jdbcUrl, String userName, String password, String tableName) {
-        Connection conn = null;
         List<String> ret = new ArrayList<>();
-        try {
-            conn = DriverManager.getConnection(jdbcUrl, userName, password);
-            Statement statement = conn.createStatement();
-            try {
-                ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2");
-                ResultSetMetaData metaData = resultSet.getMetaData();
-                int columnCount = metaData.getColumnCount();
-                for (int i = 1; i <= columnCount; i++) {
-                    ret.add(metaData.getColumnName(i));
-                }
-                resultSet.close();
-            } catch (Exception e) {
-                System.err.println("表 " + tableName + " 不存在，跳过");
-                return ret;
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, userName, password);
+             Statement statement = conn.createStatement();
+             ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                ret.add(metaData.getColumnName(i));
             }
-            statement.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            IoUtil.close(conn);
+        } catch (SQLException e) {
+            if (e.getMessage().contains("exist")) { // 根据实际驱动错误信息调整
+                System.err.println("表 " + tableName + " 不存在，跳过");
+            } else {
+                throw new RuntimeException(e);
+            }
         }
         return ret;
     }

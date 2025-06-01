@@ -29,7 +29,7 @@ public class DolphinSchedulerTool {
     }
 
     public Map<String, String> creatHeader() {
-        Map<String, String> httpHeaders = new HashMap();
+        Map<String, String> httpHeaders = new HashMap<>();
         httpHeaders.put("token", this.dpToken);
         return httpHeaders;
     }
@@ -49,7 +49,7 @@ public class DolphinSchedulerTool {
     }
 
     public String createProject(DPProject dpProject) {
-        Map<String, Object> body = new HashMap();
+        Map<String, Object> body = new HashMap<>();
         body.put("projectName", dpProject.getProjectName());
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects").addHeaders(header)).timeout(this.timeOut).form(body).execute();
@@ -71,7 +71,7 @@ public class DolphinSchedulerTool {
         this.checkRetCode(queryResponseJson, "查询数据源编码");
         JSONObject queryData = queryResponseJson.getJSONObject("data");
         JSONArray totalList = queryData.getJSONArray("totalList");
-        if (totalList.size() == 0) {
+        if (totalList.isEmpty()) {
             System.out.println("DolphinScheduler查询数据源ID失败！");
             throw new RuntimeException("DolphinScheduler查询数据源ID失败！");
         } else {
@@ -80,7 +80,7 @@ public class DolphinSchedulerTool {
     }
 
     public List<String> listWorker() {
-        List<String> ret = new ArrayList();
+        List<String> ret = new ArrayList<>();
         HttpResponse executeSearch = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/monitor/workers").addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
         JSONObject dataRet = new JSONObject(executeSearch.body());
         this.checkRetCode(dataRet, "查询执行机器列表");
