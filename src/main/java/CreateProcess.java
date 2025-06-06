@@ -7,10 +7,20 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import constant.Constant;
 import dolphinscheduler.DolphinSchedulerTool;
-import entity.*;
+import entity.DPProcessDefinition;
+import entity.DPProject;
 
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -133,8 +143,8 @@ public class CreateProcess {
             dpProcessDefinition.setTaskRelationJson(new JSONArray(Constant.taskRelationJson.replace(Constant.taskCode, taskCode)).toString());
             JSONArray jsonArray = new JSONArray(Constant.taskDefinitionJson);
             JSONObject jsonObject = jsonArray.getJSONObject(0);
-            jsonObject.put("code", taskCode);
-            jsonObject.getJSONObject("taskParams").put("json", jobConfig);
+            jsonObject.set("code", taskCode);
+            jsonObject.getJSONObject("taskParams").set("json", jobConfig);
             dpProcessDefinition.setTaskDefinitionJson(jsonArray.toString());
             dolphinSchedulerTool.createProcessDefinition(dpProjectCode, dpProcessDefinition);
             dolphinSchedulerTool.release(dpProjectCode, dpProcessDefinition.getCode(), "ONLINE");
@@ -171,13 +181,13 @@ public class CreateProcess {
         try (Connection conn = DriverManager.getConnection(jdbcUrl, userName, password);
              Statement statement = conn.createStatement();
              ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
-
             ResultSetMetaData metaData = resultSet.getMetaData();
             for (int i = 1; i <= metaData.getColumnCount(); i++) {
                 ret.add(metaData.getColumnName(i));
             }
         } catch (SQLException e) {
-            if (e.getMessage().contains("exist")) { // 根据实际驱动错误信息调整
+            String state = e.getSQLState();
+            if ("42P01".equals(state) || "42S02".equals(state)) { // 42P01:postgresql 42S02:MySQL
                 System.err.println("表 " + tableName + " 不存在，跳过");
             } else {
                 throw new RuntimeException(e);

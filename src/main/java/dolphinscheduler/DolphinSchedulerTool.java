@@ -1,7 +1,6 @@
 package dolphinscheduler;
 
 import cn.hutool.core.date.DateUtil;
-import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
@@ -10,7 +9,6 @@ import cn.hutool.json.JSONObject;
 import entity.DPDataSource;
 import entity.DPProcessDefinition;
 import entity.DPProject;
-
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -174,7 +172,7 @@ public class DolphinSchedulerTool {
 
     public int release(String projectCode, String processDefinitionCode, String releaseState) {
         JSONObject body = new JSONObject();
-        body.put("releaseState", releaseState);
+        body.set("releaseState", releaseState);
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/release").addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());
@@ -184,17 +182,17 @@ public class DolphinSchedulerTool {
 
     public void executeOnce(String projectCode, String processDefinitionCode) {
         JSONObject body = new JSONObject();
-        body.put("processDefinitionCode", processDefinitionCode);
-        body.put("failureStrategy", "END");
-        body.put("warningType", "NONE");
-        body.put("execType", "START_PROCESS");
-        body.put("taskDependType", "TASK_POST");
-        body.put("complementDependentMode", "OFF_MODE");
-        body.put("runMode", "RUN_MODE_SERIAL");
-        body.put("processInstancePriority", "MEDIUM");
-        body.put("workerGroup", "default");
-        body.put("dryRun", 0);
-        body.put("scheduleTime", "");
+        body.set("processDefinitionCode", processDefinitionCode);
+        body.set("failureStrategy", "END");
+        body.set("warningType", "NONE");
+        body.set("execType", "START_PROCESS");
+        body.set("taskDependType", "TASK_POST");
+        body.set("complementDependentMode", "OFF_MODE");
+        body.set("runMode", "RUN_MODE_SERIAL");
+        body.set("processInstancePriority", "MEDIUM");
+        body.set("workerGroup", "default");
+        body.set("dryRun", 0);
+        body.set("scheduleTime", "");
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/executors/start-process-instance")
                 .addHeaders(header).timeout(this.timeOut).form(body).execute();
@@ -205,14 +203,14 @@ public class DolphinSchedulerTool {
 
     public String createSchedule(String projectCode, String processDefinitionCode, String cron, Date startTime) {
         JSONObject body = new JSONObject();
-        body.put("schedule", this.getScheduleJson(cron, startTime).toString());
-        body.put("failureStrategy", "CONTINUE");
-        body.put("processInstancePriority", "MEDIUM");
-        body.put("warningGroupId", "0");
-        body.put("workerGroup", "default");
-        body.put("warningType", "NONE");
-        body.put("environmentCode", "");
-        body.put("processDefinitionCode", processDefinitionCode);
+        body.set("schedule", this.getScheduleJson(cron, startTime).toString());
+        body.set("failureStrategy", "CONTINUE");
+        body.set("processInstancePriority", "MEDIUM");
+        body.set("warningGroupId", "0");
+        body.set("workerGroup", "default");
+        body.set("warningType", "NONE");
+        body.set("environmentCode", "");
+        body.set("processDefinitionCode", processDefinitionCode);
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules").addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());
@@ -222,13 +220,13 @@ public class DolphinSchedulerTool {
 
     public String updateSchedule(String projectCode, String scheduleId, String cron, Date startTime) {
         JSONObject body = new JSONObject();
-        body.put("schedule", this.getScheduleJson(cron, startTime).toString());
-        body.put("failureStrategy", "CONTINUE");
-        body.put("processInstancePriority", "MEDIUM");
-        body.put("warningGroupId", "0");
-        body.put("workerGroup", "default");
-        body.put("warningType", "NONE");
-        body.put("environmentCode", "");
+        body.set("schedule", this.getScheduleJson(cron, startTime).toString());
+        body.set("failureStrategy", "CONTINUE");
+        body.set("processInstancePriority", "MEDIUM");
+        body.set("warningGroupId", "0");
+        body.set("workerGroup", "default");
+        body.set("warningType", "NONE");
+        body.set("environmentCode", "");
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createRequest(Method.PUT, this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules/" + scheduleId).addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());
@@ -247,14 +245,14 @@ public class DolphinSchedulerTool {
     private JSONObject getScheduleJson(String cron, Date startTime) {
         JSONObject json = new JSONObject(true);
         if (startTime == null) {
-            json.put("startTime", DateUtil.formatDateTime(new Date()));
+            json.set("startTime", DateUtil.formatDateTime(new Date()));
         } else {
-            json.put("startTime", DateUtil.formatDateTime(startTime));
+            json.set("startTime", DateUtil.formatDateTime(startTime));
         }
 
-        json.put("endTime", "2100-01-01 00:00:00");
-        json.put("crontab", cron);
-        json.put("timezoneId", "Asia/Shanghai");
+        json.set("endTime", "2100-01-01 00:00:00");
+        json.set("crontab", cron);
+        json.set("timezoneId", "Asia/Shanghai");
         return json;
     }
 
@@ -274,8 +272,8 @@ public class DolphinSchedulerTool {
 
     public void reRunInstance(String projectCode, String processInstanceId) {
         JSONObject body = new JSONObject();
-        body.put("processInstanceId", processInstanceId);
-        body.put("executeType", "REPEAT_RUNNING");
+        body.set("processInstanceId", processInstanceId);
+        body.set("executeType", "REPEAT_RUNNING");
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/executors/execute").addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());
@@ -298,7 +296,7 @@ public class DolphinSchedulerTool {
 
     public void delProcessInstances(String projectCode, String[] processInstanceIds) {
         JSONObject body = new JSONObject();
-        body.put("processInstanceIds", StrUtil.join(",", processInstanceIds));
+        body.set("processInstanceIds", String.join(",", processInstanceIds));
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances/batch-delete").addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());

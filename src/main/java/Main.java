@@ -6,7 +6,7 @@ public class Main {
     public static void main(String[] args) {
         String basePath = System.getProperty("user.dir");
         String configPath = basePath + "/config.json";
-        String configStr = FileUtil.readString(configPath, "utf-8");
+        String configStr = FileUtil.readUtf8String(configPath);
         if (StrUtil.isBlank(configStr)) {
             throw new RuntimeException("读取配置文件失败，configPath:" + configPath);
         }

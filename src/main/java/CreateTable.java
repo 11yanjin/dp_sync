@@ -1,8 +1,21 @@
 import cn.hutool.json.JSONObject;
 import entity.TableMetaData;
 
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,6 +44,7 @@ public class CreateTable {
         }
         try (Connection conn = DriverManager.getConnection(outputJdbcUrl, outputUserName, outputPassword);
              Statement stmt = conn.createStatement()) {
+            int i = 1;
             for (String tableName : split) {
                 try {
                     TableMetaData tableMetaData = generateTableDDL(inputJdbcUrl, inputUserName, inputPassword, tableName, prefix, isRequiresKey);
@@ -38,13 +52,8 @@ public class CreateTable {
                     LinkedHashMap<String, String> Comments = tableMetaData.getComments();
                     String schema = tableMetaData.getSchema();
                     String actualTableName = tableMetaData.getActualTableName();
-
-                    System.out.println(ddl);
                     String finalDDL = ddlTransform(ddl, inputDatabaseType, outputDatabaseType);
-                    if (!inputDatabaseType.equals(outputDatabaseType)) {
-                        System.out.println("转换为");
-                        System.out.println(finalDDL);
-                    }
+                    System.out.printf("%d. %s%n", i++, finalDDL);
                     if (!finalDDL.contains("不存在")) {
                         stmt.executeUpdate(finalDDL);
                         System.out.println(prefix + tableName + "建表语句已执行");
@@ -68,8 +77,11 @@ public class CreateTable {
     }
 
     public static String ddlTransform(StringBuilder ddl, String inputDatabaseType, String outputDatabaseType) {
-        if (inputDatabaseType.equals(outputDatabaseType)) {
+        if ("mysql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString();
+        } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
+            return ddl.toString()
+                    .replaceAll(" COMMENT '(?:''|[^'])*'", "");
         } else if ("mysql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
                     .replaceAll("\\bFLOAT\\b", "float4")
@@ -88,7 +100,8 @@ public class CreateTable {
                     .replaceAll("\\btimestamptz\\b", "timestamp")
                     .replaceAll("\\bfloat4\\b", "float")
                     .replaceAll("\\bfloat8\\b", "double")
-                    .replaceAll("\\bbytea\\b", "longblob");
+                    .replaceAll("\\bbytea\\b", "longblob")
+                    .replaceAll("\\bjsonb\\b", "json");
         } else
             return ddl.toString();
     }
@@ -113,14 +126,19 @@ public class CreateTable {
             List<String> serialColumnName = new ArrayList<>();//mysql建表语句使用serial，无需手动加上UNIQUE，用于后面排除DDL的UNIQUE
 
             String databaseProductName = metaData.getDatabaseProductName();
-            String tableComment = "";//postgresql即使没有表名注释也会执行一个空字符串注释
-            try (ResultSet tableRs = metaData.getTables(null, schema, actualTableName, new String[]{"TABLE", "VIEW"})) {
+            String tableComment;
+            String catalog = conn.getCatalog(); // mysql的catalog即数据库名，需指定以避免查询到其他库
+            try (ResultSet tableRs = metaData.getTables(catalog, schema, actualTableName, new String[]{"TABLE", "VIEW"})) {
                 if (tableRs.next()) {
-                    tableComment = tableRs.getString("REMARKS").replace("'", "''");
+                    String remarks = tableRs.getString("REMARKS");//没有表名注释postgresql为null
+                    tableComment = remarks != null ? remarks.replace("'", "''") : "";
                     Comments.put(actualTableName, tableComment);
+                } else {
+                    StringBuilder message = new StringBuilder("来源表").append(tableName).append("不存在");
+                    return new TableMetaData(message, Comments, schema, actualTableName);
                 }
             }
-            try (ResultSet columnsRs = metaData.getColumns(null, schema, actualTableName, null)) {
+            try (ResultSet columnsRs = metaData.getColumns(catalog, schema, actualTableName, null)) {
                 while (columnsRs.next()) {
                     String columnName = columnsRs.getString("COLUMN_NAME");
                     String typeName = columnsRs.getString("TYPE_NAME");
@@ -132,15 +150,15 @@ public class CreateTable {
                     String isAutoIncrement = columnsRs.getString("IS_AUTOINCREMENT");
                     StringBuilder columnDef = new StringBuilder();
                     String lowerType = typeName.toLowerCase();
-                    // 收集注释信息，postgresql无注释时为null
+                    // 收集注释信息，postgresql无注释时为null，mysql无注释时为''
                     if (remarks != null && !remarks.trim().isEmpty()) {
                         remarks = remarks.replace("'", "''");//输入时不接受注释内容有单独的'，可写成''，会转义为'
                         Comments.put(columnName, remarks);
                     }
                     if ("YES".equalsIgnoreCase(isAutoIncrement)) {
-                        //mysql和postgresql的serial输出写法差异极大，但可用统一用serial输入
+                        // mysql和postgresql的serial输出写法差异极大，但可用统一用serial输入
                         columnDef.append(columnName).append(" serial");
-                        if (!remarks.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
+                        if (remarks != null && !remarks.isEmpty()) {
                             columnDef.append(" COMMENT '").append(remarks).append("'");
                         }
                         columns.add(columnDef.toString());
@@ -157,16 +175,15 @@ public class CreateTable {
                             }
                             columnDef.append(")");
                         }
-                    } else if (isTimeType(lowerType)) { //时间系列字段长度处理
+                    } else if (isTimeType(lowerType)) { // 时间系列字段长度处理
+                        // 输入时，postgresql不写长度默认为6，mysql不写长度默认为0
                         if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-                            if (decimalDigits > 0) { //输入时，postgresql不写长度默认为6，mysql不写长度默认为0
-                                columnDef.append("(").append(decimalDigits).append(")");
-                            }
+                            columnDef.append("(").append(decimalDigits).append(")");
                         } else if ("MySQL".equalsIgnoreCase(databaseProductName)) {
                             int precision = calculateMySQLTimePrecision(lowerType, columnSize);
                             columnDef.append("(").append(precision).append(")");
                         }
-                    } else if (typeRequiresLength(lowerType)) { //char系列字段长度处理
+                    } else if (typeRequiresLength(lowerType)) { // char系列字段长度处理
                         if (columnSize > 0) {
                             columnDef.append("(").append(columnSize).append(")");
                         }
@@ -177,26 +194,26 @@ public class CreateTable {
                     }
                     if (defaultValue != null) {
                         if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-                            int index = defaultValue.indexOf("::");//去掉postgresql类型转换语法,因为套用在mysql会出现问题
+                            int index = defaultValue.indexOf("::");// 去掉postgresql类型转换语法,因为套用在mysql会出现问题
                             if (index != -1) {
                                 defaultValue = defaultValue.substring(0, index);
                             }
                             columnDef.append(" DEFAULT ").append(defaultValue);
+                            if ("CURRENT_TIMESTAMP".equals(defaultValue)) {
+                                columnDef.append("(").append(decimalDigits).append(")");
+                            }
                         } else if ("MySQL".equalsIgnoreCase(databaseProductName)) {
                             if (typeRequiresLength(lowerType)) {
-                                columnDef.append(" DEFAULT '").append(defaultValue).append("'");//mysql的char系列字段不带单引号
+                                // mysql的char系列字段不带单引号
+                                columnDef.append(" DEFAULT '").append(defaultValue).append("'");
                             } else
                                 columnDef.append(" DEFAULT ").append(defaultValue);
                         }
                     }
-                    if (remarks != null && !remarks.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
+                    if (remarks != null && !remarks.isEmpty()) {
                         columnDef.append(" COMMENT '").append(remarks).append("'");
                     }
                     columns.add(columnDef.toString());
-                }
-                if (columns.isEmpty()) {
-                    StringBuilder message = new StringBuilder("来源表").append(tableName).append("不存在");
-                    return new TableMetaData(message, Comments, schema, actualTableName);
                 }
             }
 
@@ -205,7 +222,7 @@ public class CreateTable {
             Map<String, TreeMap<Short, String>> uniqueConstraints = new LinkedHashMap<>();//唯一键的字段组
             if (isRequiresKey) {
                 // 获取主键信息（按顺序）
-                try (ResultSet pkRs = metaData.getPrimaryKeys(null, schema, actualTableName)) {
+                try (ResultSet pkRs = metaData.getPrimaryKeys(catalog, schema, actualTableName)) {
                     while (pkRs.next()) {
                         String pkColumn = pkRs.getString("COLUMN_NAME");
                         short keySeq = pkRs.getShort("KEY_SEQ"); //键的字段的序号
@@ -217,7 +234,7 @@ public class CreateTable {
                     }
                 }
                 // 获取唯一键信息
-                try (ResultSet indexRs = metaData.getIndexInfo(null, schema, actualTableName, false, false)) {
+                try (ResultSet indexRs = metaData.getIndexInfo(catalog, schema, actualTableName, false, false)) {
                     while (indexRs.next()) {
                         String indexName = indexRs.getString("INDEX_NAME");
                         boolean nonUnique = indexRs.getBoolean("NON_UNIQUE");
@@ -257,7 +274,7 @@ public class CreateTable {
                     ddl.append("UNIQUE (").append(String.join(", ", entry.getValue().values())).append(")");
                 }
             }
-            if (!tableComment.isEmpty() && "MySQL".equalsIgnoreCase(databaseProductName)) {
+            if (!tableComment.isEmpty()) {
                 ddl.append("\n) COMMENT '").append(tableComment).append("';");
             } else {
                 ddl.append("\n);");
