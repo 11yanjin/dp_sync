@@ -16,11 +16,10 @@ public class Main {
                 CreateTable.execute(config, true);
             } else if (args[0].equalsIgnoreCase("CreateTableNoKey")) {
                 CreateTable.execute(config, false);
-            } else {
+            } else if (StrUtil.isNumeric(args[0])) {
                 OffLine.execute(config, args[0]);
-            }
-        } else {
+            } else System.err.println("参数无效");
+        } else
             CreateProcess.execute(config);
-        }
     }
 }

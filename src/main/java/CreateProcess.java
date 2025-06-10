@@ -138,7 +138,7 @@ public class CreateProcess {
             //创建海豚调度器工作流，并配置定时上线
             String taskCode = taskCodeIterator.next();
             DPProcessDefinition dpProcessDefinition = new DPProcessDefinition(dpTenant);
-            dpProcessDefinition.setName(tableName);
+            dpProcessDefinition.setName(OutTableName);
             dpProcessDefinition.setLocations(new JSONArray(Constant.locations.replace(Constant.taskCode, taskCode)).toString());
             dpProcessDefinition.setTaskRelationJson(new JSONArray(Constant.taskRelationJson.replace(Constant.taskCode, taskCode)).toString());
             JSONArray jsonArray = new JSONArray(Constant.taskDefinitionJson);
@@ -146,6 +146,7 @@ public class CreateProcess {
             jsonObject.set("code", taskCode);
             jsonObject.getJSONObject("taskParams").set("json", jobConfig);
             dpProcessDefinition.setTaskDefinitionJson(jsonArray.toString());
+            dpProcessDefinition.setExecutionType("SERIAL_DISCARD"); // 串行丢弃
             dolphinSchedulerTool.createProcessDefinition(dpProjectCode, dpProcessDefinition);
             dolphinSchedulerTool.release(dpProjectCode, dpProcessDefinition.getCode(), "ONLINE");
             String schedule_id = dolphinSchedulerTool.createSchedule(dpProjectCode, dpProcessDefinition.getCode(),

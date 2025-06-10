@@ -2,8 +2,8 @@
 "dpHttpUrl": "http://192.168.10.11:12345",  
 "dpToken": "139c4d43544b5b3f946cf1632de8eb0f",  
 "dpTenant": "yanjin",  
-"dpProjectName":"数据同步3",  
 "dpProjectCode":"",  
+"dpProjectName":"数据同步3",  
 "inputJdbcUrl": "jdbc:postgresql://192.168.10.12:5432/pgtest",  
 "inputUserName":"postgres",  
 "inputPassword":"postgres",  
@@ -17,16 +17,20 @@
 "cycle":"minute:15", // 调度周期，不填默认为每天，"minute:15"代表每15分钟执行一次，"hour:2"代表每2小时执行一次  
 "hourBegin":0, // 任务队列起始小时  
 "minuteBegin":10, // 任务队列起始分钟  
-"tableDispatchBatchSize":2, // 任务批次数量
+"tableDispatchBatchSize":2, // 任务批次数量  
 "tableDispatchBatchInterval":3, // 任务批次间隔  
 "executeOnce":"yes", // 值为"yes"或"true"则立即执行一次，否则不执行  
 "prefix":"o_full_", // 去向表的前缀  
 "tables":"test1,ff,table1,sys_user"  
 }
 
-可以接一个projectCode参数，如果有参数，则下线该项目下所有工作流，方便后续删除，如：  
-java -jar dp_sync-1.jar 17391796121440  
-可以接CreateTable参数，在去向数据库自动建表，含主键、唯一键等信息，如：  
+1.不带参数为创建工作流
+
+2.可以接CreateTable参数（不区分大小写），在去向数据库自动建表，含主键、唯一键等信息，如：  
 java -jar dp_sync-1.jar CreateTable  
-可以接CreateTableNoKey参数，在去向数据库自动建表，但不含主键、唯一键等信息，如：  
+
+3.可以接CreateTableNoKey参数（不区分大小写），在去向数据库自动建表，但不含主键、唯一键等信息，如：  
 java -jar dp_sync-1.jar CreateTableNoKey
+
+4.可以接一个projectCode参数，如果有参数，则下线该项目下所有工作流，方便后续删除，如：  
+java -jar dp_sync-1.jar 17391796121440  

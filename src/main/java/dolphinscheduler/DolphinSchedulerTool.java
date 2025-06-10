@@ -249,7 +249,6 @@ public class DolphinSchedulerTool {
         } else {
             json.set("startTime", DateUtil.formatDateTime(startTime));
         }
-
         json.set("endTime", "2100-01-01 00:00:00");
         json.set("crontab", cron);
         json.set("timezoneId", "Asia/Shanghai");

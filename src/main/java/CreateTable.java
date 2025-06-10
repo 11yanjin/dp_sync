@@ -1,3 +1,4 @@
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import entity.TableMetaData;
 
@@ -53,12 +54,13 @@ public class CreateTable {
                     String schema = tableMetaData.getSchema();
                     String actualTableName = tableMetaData.getActualTableName();
                     String finalDDL = ddlTransform(ddl, inputDatabaseType, outputDatabaseType);
+                    System.out.println("------------------------------------------------------------");
                     System.out.printf("%d. %s%n", i++, finalDDL);
                     if (!finalDDL.contains("不存在")) {
                         stmt.executeUpdate(finalDDL);
                         System.out.println(prefix + tableName + "建表语句已执行");
                         if ("postgresql".equalsIgnoreCase(outputDatabaseType)) {
-                            addComments(stmt, schema, prefix + actualTableName, Comments);
+                            addPostgresqlComments(stmt, schema, prefix + actualTableName, Comments);
                         }
                         SQLWarning warning = stmt.getWarnings();
                         while (warning != null) {
@@ -84,6 +86,8 @@ public class CreateTable {
                     .replaceAll(" COMMENT '(?:''|[^'])*'", "");
         } else if ("mysql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
+                    .replaceAll("\\bTINYINT\\b", "int2")
+                    .replaceAll("\\bBIT\\(1\\)", "bool") // jdbc把TINYINT(1)转化为BIT(1)，TINYINT不变
                     .replaceAll("\\bFLOAT\\b", "float4")
                     .replaceAll("\\bDOUBLE\\b", "float8")
                     .replaceAll("\\bDATETIME\\b", "timestamp")
@@ -96,6 +100,8 @@ public class CreateTable {
         } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
                     .replaceAll("\\bbpchar\\b", "char")
+                    // 不带长度的varchar转为text。mysql的varchar长度max=16383，超过请手动转为text系列
+                    .replaceAll("\\bvarchar\\b(?!\\()", "text")
                     .replaceAll("\\btimestamp\\b", "datetime")
                     .replaceAll("\\btimestamptz\\b", "timestamp")
                     .replaceAll("\\bfloat4\\b", "float")
@@ -118,7 +124,7 @@ public class CreateTable {
         Properties props = new Properties();
         props.setProperty("user", userName);
         props.setProperty("password", password);
-        props.setProperty("useInformationSchema", "true");//默认为false，mysql需改为true才能获取表名注释
+        props.setProperty("useInformationSchema", "true");// 默认为false，mysql5.7需改为true才能获取表名注释
         try (Connection conn = DriverManager.getConnection(jdbcUrl, props)) {
             DatabaseMetaData metaData = conn.getMetaData();
             List<String> columns = new ArrayList<>();
@@ -151,14 +157,14 @@ public class CreateTable {
                     StringBuilder columnDef = new StringBuilder();
                     String lowerType = typeName.toLowerCase();
                     // 收集注释信息，postgresql无注释时为null，mysql无注释时为''
-                    if (remarks != null && !remarks.trim().isEmpty()) {
+                    if (StrUtil.isNotBlank(remarks)) {
                         remarks = remarks.replace("'", "''");//输入时不接受注释内容有单独的'，可写成''，会转义为'
                         Comments.put(columnName, remarks);
                     }
                     if ("YES".equalsIgnoreCase(isAutoIncrement)) {
                         // mysql和postgresql的serial输出写法差异极大，但可用统一用serial输入
                         columnDef.append(columnName).append(" serial");
-                        if (remarks != null && !remarks.isEmpty()) {
+                        if (StrUtil.isNotBlank(remarks)) {
                             columnDef.append(" COMMENT '").append(remarks).append("'");
                         }
                         columns.add(columnDef.toString());
@@ -184,7 +190,7 @@ public class CreateTable {
                             columnDef.append("(").append(precision).append(")");
                         }
                     } else if (typeRequiresLength(lowerType)) { // char系列字段长度处理
-                        if (columnSize > 0) {
+                        if (columnSize > 0 && columnSize < 10485760) { //postgresql不带长度的varchar的columnSize是2147483647，直接省略
                             columnDef.append("(").append(columnSize).append(")");
                         }
                     }
@@ -210,13 +216,13 @@ public class CreateTable {
                                 columnDef.append(" DEFAULT ").append(defaultValue);
                         }
                     }
-                    if (remarks != null && !remarks.isEmpty()) {
+                    if (StrUtil.isNotBlank(remarks)) {
                         columnDef.append(" COMMENT '").append(remarks).append("'");
                     }
                     columns.add(columnDef.toString());
                 }
             }
-
+            //获取键信息
             Map<Short, String> primaryKeyMap = new TreeMap<>();
             Set<String> primaryKeyNames = new HashSet<>();
             Map<String, TreeMap<Short, String>> uniqueConstraints = new LinkedHashMap<>();//唯一键的字段组
@@ -283,7 +289,8 @@ public class CreateTable {
         }
     }
 
-    private static void addComments(Statement stmt, String schema, String tableName, LinkedHashMap<String, String> comments) throws SQLException {
+    private static void addPostgresqlComments(Statement stmt, String schema, String tableName,
+                                              LinkedHashMap<String, String> comments) throws SQLException {
         String fullTableName = (schema != null ? schema + "." : "") + tableName;
         // 获取并设置表注释
         if (!comments.isEmpty()) {

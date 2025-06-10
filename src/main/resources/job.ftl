@@ -6,7 +6,6 @@
         "percentage": 0
       },
       "speed": {
-        "byte": 8388608,
         "channel": "1"
       }
     },
