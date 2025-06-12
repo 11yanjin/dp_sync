@@ -11,5 +11,5 @@ public class TableMetaData {
     private StringBuilder ddl;
     private LinkedHashMap<String, String> Comments;
     private String schema;
-    private String actualTableName;
+    private String tableName;
 }

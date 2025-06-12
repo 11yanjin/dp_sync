@@ -4,7 +4,7 @@
 "dpTenant": "yanjin",  
 "dpProjectCode":"",  
 "dpProjectName":"数据同步3",  
-"inputJdbcUrl": "jdbc:postgresql://192.168.10.12:5432/pgtest",  
+"inputJdbcUrl": "jdbc:postgresql://192.168.10.12:5432/pgtest?currentSchema=my_schema", // 对于postgresql，若schema非public，应指定  
 "inputUserName":"postgres",  
 "inputPassword":"postgres",  
 "outputJdbcUrl": "jdbc:mysql://192.168.10.11:3306/test?characterEncoding=UTF-8",  
@@ -27,7 +27,7 @@
 1.不带参数为创建工作流
 
 2.可以接CreateTable参数（不区分大小写），在去向数据库自动建表，含主键、唯一键等信息，如：  
-java -jar dp_sync-1.jar CreateTable  
+java -jar dp_sync-1.jar CreateTable
 
 3.可以接CreateTableNoKey参数（不区分大小写），在去向数据库自动建表，但不含主键、唯一键等信息，如：  
 java -jar dp_sync-1.jar CreateTableNoKey

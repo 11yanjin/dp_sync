@@ -17,8 +17,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class CreateTable {
     public static void execute(JSONObject config, boolean isRequiresKey) {
@@ -31,36 +29,29 @@ public class CreateTable {
         String prefix = config.getStr("prefix");
         String tables = config.getStr("tables");
         String[] split = tables.split(",");
-        //获取数据源类型
-        Pattern pattern = Pattern.compile("jdbc:([^:]+):");
-        String inputDatabaseType = "";
-        String outputDatabaseType = "";
-        Matcher inputMatcher = pattern.matcher(inputJdbcUrl);
-        if (inputMatcher.find()) {
-            inputDatabaseType = inputMatcher.group(1);
-        }
-        Matcher outputMatcher = pattern.matcher(outputJdbcUrl);
-        if (outputMatcher.find()) {
-            outputDatabaseType = outputMatcher.group(1);
-        }
+        // 获取数据源类型
+        String inputDatabaseType = inputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1");
+        String outputDatabaseType = outputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1");
+
         try (Connection conn = DriverManager.getConnection(outputJdbcUrl, outputUserName, outputPassword);
              Statement stmt = conn.createStatement()) {
             int i = 1;
+            String outputSchema = conn.getSchema();
             for (String tableName : split) {
                 try {
                     TableMetaData tableMetaData = generateTableDDL(inputJdbcUrl, inputUserName, inputPassword, tableName, prefix, isRequiresKey);
+                    if (tableMetaData == null) continue;
                     StringBuilder ddl = tableMetaData.getDdl();
                     LinkedHashMap<String, String> Comments = tableMetaData.getComments();
-                    String schema = tableMetaData.getSchema();
-                    String actualTableName = tableMetaData.getActualTableName();
-                    String finalDDL = ddlTransform(ddl, inputDatabaseType, outputDatabaseType);
+
+                    String finalDDL = ddlTransform(ddl, inputDatabaseType, outputDatabaseType, outputSchema);
                     System.out.println("------------------------------------------------------------");
-                    System.out.printf("%d. %s%n", i++, finalDDL);
                     if (!finalDDL.contains("不存在")) {
+                        System.out.printf("%d. %s%n", i++, finalDDL);
                         stmt.executeUpdate(finalDDL);
                         System.out.println(prefix + tableName + "建表语句已执行");
                         if ("postgresql".equalsIgnoreCase(outputDatabaseType)) {
-                            addPostgresqlComments(stmt, schema, prefix + actualTableName, Comments);
+                            addPostgresqlComments(stmt, outputSchema, prefix + tableName, Comments);
                         }
                         SQLWarning warning = stmt.getWarnings();
                         while (warning != null) {
@@ -68,7 +59,8 @@ public class CreateTable {
                             warning = warning.getNextWarning();
                         }
                         stmt.clearWarnings(); // 清除当前警告
-                    }
+                    } else
+                        System.out.printf("%s%n", finalDDL);
                 } catch (SQLException e) {
                     System.err.println("创建表 " + prefix + tableName + " 时出错: " + e.getMessage());
                 }
@@ -78,16 +70,18 @@ public class CreateTable {
         }
     }
 
-    public static String ddlTransform(StringBuilder ddl, String inputDatabaseType, String outputDatabaseType) {
+    private static String ddlTransform(StringBuilder ddl, String inputDatabaseType, String outputDatabaseType, String outputSchema) {
         if ("mysql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString();
         } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
+                    .replaceAll("(?<=EXISTS\\s)[^.]+(?=\\.)", outputSchema)
                     .replaceAll(" COMMENT '(?:''|[^'])*'", "");
         } else if ("mysql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
+                    .replaceAll("(?<=EXISTS\\s)(?=\\S+)", outputSchema + ".")
                     .replaceAll("\\bTINYINT\\b", "int2")
-                    .replaceAll("\\bBIT\\(1\\)", "bool") // jdbc把TINYINT(1)转化为BIT(1)，TINYINT不变
+                    .replaceAll("\\bBIT\\(1\\)", "bool") // jdbc会把TINYINT(1)转化为BIT(1)，但TINYINT不变
                     .replaceAll("\\bFLOAT\\b", "float4")
                     .replaceAll("\\bDOUBLE\\b", "float8")
                     .replaceAll("\\bDATETIME\\b", "timestamp")
@@ -99,6 +93,7 @@ public class CreateTable {
                     .replaceAll(" COMMENT '(?:''|[^'])*'", "");
         } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
             return ddl.toString()
+                    .replaceAll("(?<=EXISTS\\s)[^.]+\\.", "")
                     .replaceAll("\\bbpchar\\b", "char")
                     // 不带长度的varchar转为text。mysql的varchar长度max=16383，超过请手动转为text系列
                     .replaceAll("\\bvarchar\\b(?!\\()", "text")
@@ -112,15 +107,9 @@ public class CreateTable {
             return ddl.toString();
     }
 
-    public static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password, String tableName, String prefix, boolean isRequiresKey) throws SQLException {
-        String schema = null;
-        String actualTableName = tableName; //用于分离tableName和schema
-        // 解析schema和表名
-        if (tableName.contains(".")) {
-            String[] parts = tableName.split("\\.", 2);
-            schema = parts[0];
-            actualTableName = parts[1];
-        }
+    private static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password, String tableName, String prefix, boolean isRequiresKey) throws SQLException {
+        // postgresql中，getTables、getColumns方法中tableName为null或空字符串则会获取所有表
+        if (StrUtil.isBlank(tableName)) return null;
         Properties props = new Properties();
         props.setProperty("user", userName);
         props.setProperty("password", password);
@@ -134,17 +123,18 @@ public class CreateTable {
             String databaseProductName = metaData.getDatabaseProductName();
             String tableComment;
             String catalog = conn.getCatalog(); // mysql的catalog即数据库名，需指定以避免查询到其他库
-            try (ResultSet tableRs = metaData.getTables(catalog, schema, actualTableName, new String[]{"TABLE", "VIEW"})) {
+            String schema = conn.getSchema();
+            try (ResultSet tableRs = metaData.getTables(catalog, schema, tableName, new String[]{"TABLE", "VIEW"})) {
                 if (tableRs.next()) {
-                    String remarks = tableRs.getString("REMARKS");//没有表名注释postgresql为null
+                    String remarks = tableRs.getString("REMARKS");// 没有表名注释postgresql为null
                     tableComment = remarks != null ? remarks.replace("'", "''") : "";
-                    Comments.put(actualTableName, tableComment);
+                    Comments.put(tableName, tableComment);
                 } else {
                     StringBuilder message = new StringBuilder("来源表").append(tableName).append("不存在");
-                    return new TableMetaData(message, Comments, schema, actualTableName);
+                    return new TableMetaData(message, Comments, schema, tableName);
                 }
             }
-            try (ResultSet columnsRs = metaData.getColumns(catalog, schema, actualTableName, null)) {
+            try (ResultSet columnsRs = metaData.getColumns(catalog, schema, tableName, null)) {
                 while (columnsRs.next()) {
                     String columnName = columnsRs.getString("COLUMN_NAME");
                     String typeName = columnsRs.getString("TYPE_NAME");
@@ -228,7 +218,7 @@ public class CreateTable {
             Map<String, TreeMap<Short, String>> uniqueConstraints = new LinkedHashMap<>();//唯一键的字段组
             if (isRequiresKey) {
                 // 获取主键信息（按顺序）
-                try (ResultSet pkRs = metaData.getPrimaryKeys(catalog, schema, actualTableName)) {
+                try (ResultSet pkRs = metaData.getPrimaryKeys(catalog, schema, tableName)) {
                     while (pkRs.next()) {
                         String pkColumn = pkRs.getString("COLUMN_NAME");
                         short keySeq = pkRs.getShort("KEY_SEQ"); //键的字段的序号
@@ -240,7 +230,7 @@ public class CreateTable {
                     }
                 }
                 // 获取唯一键信息
-                try (ResultSet indexRs = metaData.getIndexInfo(catalog, schema, actualTableName, false, false)) {
+                try (ResultSet indexRs = metaData.getIndexInfo(catalog, schema, tableName, false, false)) {
                     while (indexRs.next()) {
                         String indexName = indexRs.getString("INDEX_NAME");
                         boolean nonUnique = indexRs.getBoolean("NON_UNIQUE");
@@ -266,7 +256,7 @@ public class CreateTable {
             if (schema != null) {
                 ddl.append(schema).append(".");
             }
-            ddl.append(prefix).append(actualTableName).append("(\n");
+            ddl.append(prefix).append(tableName).append("(\n");
             ddl.append(String.join(",\n", columns));// 添加列定义
 
             if (isRequiresKey) {
@@ -285,21 +275,23 @@ public class CreateTable {
             } else {
                 ddl.append("\n);");
             }
-            return new TableMetaData(ddl, Comments, schema, actualTableName);
+            return new TableMetaData(ddl, Comments, schema, tableName);
         }
     }
 
-    private static void addPostgresqlComments(Statement stmt, String schema, String tableName,
-                                              LinkedHashMap<String, String> comments) throws SQLException {
-        String fullTableName = (schema != null ? schema + "." : "") + tableName;
-        // 获取并设置表注释
+    private static void addPostgresqlComments(Statement stmt, String schema, String tableName, LinkedHashMap<String, String> comments) {
+        // 添加表注释
         if (!comments.isEmpty()) {
             String tableComment = comments.values().iterator().next();
-            String tableCommentSql = String.format("COMMENT ON TABLE %s IS '%s';", fullTableName, tableComment);
+            String tableCommentSql = String.format("COMMENT ON TABLE %s.%s IS '%s';", schema, tableName, tableComment);
             System.out.println(tableCommentSql);
-            stmt.executeUpdate(tableCommentSql);
+            try {
+                stmt.executeUpdate(tableCommentSql);
+            } catch (SQLException e) {
+                System.err.printf("添加表 %s 注释出错: %s%n", tableName, e.getMessage());
+            }
         }
-        // 移除第一个元素（表注释）后处理列注释
+        // 移除第一个元素（表注释）后添加字段注释
         LinkedHashMap<String, String> columnComments = new LinkedHashMap<>(comments);
         if (!columnComments.isEmpty()) {
             columnComments.remove(columnComments.keySet().iterator().next());
@@ -307,7 +299,7 @@ public class CreateTable {
         for (Map.Entry<String, String> entry : columnComments.entrySet()) {
             String columnName = entry.getKey();
             String comment = entry.getValue();
-            String commentSql = String.format("COMMENT ON COLUMN %s.%s IS '%s';", fullTableName, columnName, comment);
+            String commentSql = String.format("COMMENT ON COLUMN %s.%s.%s IS '%s';", schema, tableName, columnName, comment);
             System.out.println(commentSql);
             try {
                 stmt.executeUpdate(commentSql);

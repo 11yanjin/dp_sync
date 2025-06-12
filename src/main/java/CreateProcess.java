@@ -21,8 +21,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class CreateProcess {
     public static void execute(JSONObject config) {
@@ -76,9 +74,8 @@ public class CreateProcess {
         int currentTableNum = 0;
         for (String tableName : split1) {
             List<String> tableFields = getTableFields(inputJdbcUrl, inputUserName, inputPassword, tableName);
-            if (tableFields.isEmpty()) {
-                continue;
-            }
+            if (tableFields.isEmpty()) continue;
+
             List<String> columnList4In = new ArrayList<>();
             List<String> columnList4Out = new ArrayList<>();
             for (String item : tableFields) {
@@ -90,30 +87,21 @@ public class CreateProcess {
                 }
                 columnList4Out.add("\"" + item + "\"");
             }
-            String OutTableName = prefix + tableName;
+            String outputTableName = prefix + tableName;
             String preSql1;
             if (deleteWhere.equals("truncate") || deleteWhere.equals("1=1")) {
-                preSql1 = "truncate table " + OutTableName;
+                preSql1 = "truncate table " + outputTableName;
             } else if (deleteWhere.isEmpty() || deleteWhere.equals("1=2")) {
                 preSql1 = null;
             } else {
-                preSql1 = "delete from " + OutTableName + " where " + deleteWhere;
+                preSql1 = "delete from " + outputTableName + " where " + deleteWhere;
             }
             //String postSql1 = "vacuum full " + tableName;
             String querySql = "select " + StrUtil.join(",", columnList4In) + " from " + tableName + (StrUtil.isEmpty(where) ? "" : " where " + where);
             String outputColumn = StrUtil.join(",", columnList4Out);
             //获取数据源类型
-            Pattern pattern = Pattern.compile("jdbc:([^:]+):");
-            Matcher readerMatcher = pattern.matcher(inputJdbcUrl);
-            String readerType = "";
-            String writerType = "";
-            if (readerMatcher.find()) {
-                readerType = readerMatcher.group(1) + "reader";
-            }
-            Matcher writerMatcher = pattern.matcher(outputJdbcUrl);
-            if (writerMatcher.find()) {
-                writerType = writerMatcher.group(1) + "writer";
-            }
+            String readerType = inputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1reader");
+            String writerType = outputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1writer");
             // 拼接param
             Map<String, Object> param = new HashMap<>();
             param.put("readerType", readerType);
@@ -128,7 +116,7 @@ public class CreateProcess {
             param.put("preSql1", preSql1);
             //param.put("postSql1", postSql1);
             param.put("outputJdbcUrl", outputJdbcUrl);
-            param.put("table", OutTableName);
+            param.put("table", outputTableName);
             param.put("errorLimit", errorLimit);
 
             TemplateEngine engine = TemplateUtil.createEngine(new TemplateConfig("", TemplateConfig.ResourceMode.CLASSPATH));
@@ -138,7 +126,7 @@ public class CreateProcess {
             //创建海豚调度器工作流，并配置定时上线
             String taskCode = taskCodeIterator.next();
             DPProcessDefinition dpProcessDefinition = new DPProcessDefinition(dpTenant);
-            dpProcessDefinition.setName(OutTableName);
+            dpProcessDefinition.setName(outputTableName);
             dpProcessDefinition.setLocations(new JSONArray(Constant.locations.replace(Constant.taskCode, taskCode)).toString());
             dpProcessDefinition.setTaskRelationJson(new JSONArray(Constant.taskRelationJson.replace(Constant.taskCode, taskCode)).toString());
             JSONArray jsonArray = new JSONArray(Constant.taskDefinitionJson);
@@ -157,9 +145,8 @@ public class CreateProcess {
                 dolphinSchedulerTool.executeOnce(dpProjectCode, dpProcessDefinition.getCode());
             }
             currentTableNum++;
-            System.out.println("第" + currentTableNum + "张表:" + tableName + "已同步");
+            System.out.println("第" + currentTableNum + "张表:" + outputTableName + "工作流已创建");
         }
-
     }
 
     private static String getCron(int hourBegin, int minuteBegin, int tableDispatchBatchSize, int tableDispatchBatchInterval, int currentTableNum, String cycle) {
@@ -179,6 +166,7 @@ public class CreateProcess {
 
     private static List<String> getTableFields(String jdbcUrl, String userName, String password, String tableName) {
         List<String> ret = new ArrayList<>();
+        if (StrUtil.isBlank(tableName)) return ret;
         try (Connection conn = DriverManager.getConnection(jdbcUrl, userName, password);
              Statement statement = conn.createStatement();
              ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
