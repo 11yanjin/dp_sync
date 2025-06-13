@@ -17,8 +17,8 @@
 "cycle":"minute:15", // 调度周期，不填默认为每天，"minute:15"代表每15分钟执行一次，"hour:2"代表每2小时执行一次  
 "hourBegin":0, // 任务队列起始小时  
 "minuteBegin":10, // 任务队列起始分钟  
-"tableDispatchBatchSize":2, // 任务批次数量  
-"tableDispatchBatchInterval":3, // 任务批次间隔  
+"tableDispatchBatchSize":2, // 同一批次含有的任务数量  
+"tableDispatchBatchInterval":3, // 批次间隔（分钟）  
 "executeOnce":"yes", // 值为"yes"或"true"则立即执行一次，否则不执行  
 "prefix":"o_full_", // 去向表的前缀  
 "tables":"test1,ff,table1,sys_user"  

@@ -50,15 +50,15 @@ public class CreateTable {
                         System.out.printf("%d. %s%n", i++, finalDDL);
                         stmt.executeUpdate(finalDDL);
                         System.out.println(prefix + tableName + "建表语句已执行");
+                        SQLWarning warning = stmt.getWarnings();
                         if ("postgresql".equalsIgnoreCase(outputDatabaseType)) {
                             addPostgresqlComments(stmt, outputSchema, prefix + tableName, Comments);
                         }
-                        SQLWarning warning = stmt.getWarnings();
                         while (warning != null) {
                             System.out.println("注意: " + warning.getMessage());
                             warning = warning.getNextWarning();
                         }
-                        stmt.clearWarnings(); // 清除当前警告
+                        stmt.clearWarnings(); // 清除当前警告，mysql会保留stmt所有已执行sql的警告，postgresql仅保留最近一次执行sql的警告
                     } else
                         System.out.printf("%s%n", finalDDL);
                 } catch (SQLException e) {
@@ -124,7 +124,7 @@ public class CreateTable {
             String tableComment;
             String catalog = conn.getCatalog(); // mysql的catalog即数据库名，需指定以避免查询到其他库
             String schema = conn.getSchema();
-            try (ResultSet tableRs = metaData.getTables(catalog, schema, tableName, new String[]{"TABLE", "VIEW"})) {
+            try (ResultSet tableRs = metaData.getTables(catalog, schema, tableName, new String[]{"TABLE"})) {
                 if (tableRs.next()) {
                     String remarks = tableRs.getString("REMARKS");// 没有表名注释postgresql为null
                     tableComment = remarks != null ? remarks.replace("'", "''") : "";
