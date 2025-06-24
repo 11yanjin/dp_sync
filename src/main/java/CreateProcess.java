@@ -39,7 +39,7 @@ public class CreateProcess {
         int minuteBegin = config.getInt("minuteBegin");
         int tableDispatchBatchSize = config.getInt("tableDispatchBatchSize");
         int tableDispatchBatchInterval = config.getInt("tableDispatchBatchInterval");
-        String executeOnce = config.getStr("executeOnce");
+        String executeImmediately = config.getStr("executeImmediately");
         String prefix = config.getStr("prefix");
         String tables = config.getStr("tables");
         // 海豚调度其工作类
@@ -57,22 +57,25 @@ public class CreateProcess {
             dpProject.setProjectName(dpProjectName);
             dpProjectCode = dolphinSchedulerTool.createProject(dpProject);
         }
-        String[] split1 = tables.split(",");
-        String[] split2 = specified.split(",");//切分 直接指定值字段
+        String[] tableArray = tables.split(",");
+
         Map<String, String> fieldMapping = new HashMap<>();
-        for (String expr : split2) {
-            expr = expr.trim();
-            String[] parts = expr.split("\\s+[Aa][Ss]\\s+", 2);
-            if (parts.length == 2) {
-                String value = parts[0].trim();
-                String fieldName = parts[1].trim().toLowerCase();
-                fieldMapping.put(fieldName, value);
+        if(StrUtil.isBlank(specified)){
+            String[] specifiedArray = specified.split(",");//切分 直接指定值字段
+            for (String expr : specifiedArray) {
+                expr = expr.trim();
+                String[] parts = expr.split("\\s+[Aa][Ss]\\s+", 2);
+                if (parts.length == 2) {
+                    String value = parts[0].trim();
+                    String fieldName = parts[1].trim().toLowerCase();
+                    fieldMapping.put(fieldName, value);
+                }
             }
         }
-        List<String> taskCodeList = dolphinSchedulerTool.getTaskCode(dpProjectCode, split1.length);
+        List<String> taskCodeList = dolphinSchedulerTool.getTaskCode(dpProjectCode, tableArray.length);
         Iterator<String> taskCodeIterator = taskCodeList.iterator();
         int currentTableNum = 0;
-        for (String tableName : split1) {
+        for (String tableName : tableArray) {
             List<String> tableFields = getTableFields(inputJdbcUrl, inputUserName, inputPassword, tableName);
             if (tableFields.isEmpty()) continue;
 
@@ -141,7 +144,7 @@ public class CreateProcess {
                     getCron(hourBegin, minuteBegin, tableDispatchBatchSize, tableDispatchBatchInterval, currentTableNum, cycle), null);
             dolphinSchedulerTool.releaseSchedule(dpProjectCode, schedule_id, "online");
             //将工作流立即执行一次
-            if (executeOnce.equalsIgnoreCase("yes") || executeOnce.equalsIgnoreCase("true")) {
+            if (StrUtil.equalsAnyIgnoreCase(executeImmediately, "yes", "true")) {
                 dolphinSchedulerTool.executeOnce(dpProjectCode, dpProcessDefinition.getCode());
             }
             currentTableNum++;
