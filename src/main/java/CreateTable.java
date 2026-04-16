@@ -1,5 +1,7 @@
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
+import dialect.DialectFactory;
+import dialect.DialectHandler;
 import entity.TableMetaData;
 
 import java.sql.Connection;
@@ -18,20 +20,44 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 
+/**
+ * 跨库建表核心类。
+ *
+ * <p>架构说明（DataX Reader/Writer 插件风格）：
+ * <ul>
+ *   <li>本类只负责流程编排，不包含任何数据库方言细节</li>
+ *   <li>方言细节全部委托给 {@link DialectHandler} 的具体实现（Reader 侧 + Writer 侧）</li>
+ *   <li>新增数据源只需：① 实现 {@link DialectHandler}；② 在 {@link DialectFactory} 注册一行</li>
+ * </ul>
+ *
+ * <pre>
+ * 流程：
+ *   1. 读配置，通过 DialectFactory 获取 inputDialect（Reader）和 outputDialect（Writer）
+ *   2. generateTableDDL()：通过 inputDialect 读取源库元数据，生成中间 DDL
+ *   3. outputDialect.transformDDL()：将中间 DDL 转换为目标库可执行的 DDL
+ *   4. 执行 DDL；执行后调用 outputDialect.writeTableComments() 写入注释
+ * </pre>
+ */
 public class CreateTable {
+
+    // ===================== 对外入口 =====================
+
     public static void execute(JSONObject config, boolean isRequiresKey) {
-        String inputJdbcUrl = config.getStr("inputJdbcUrl");
-        String inputUserName = config.getStr("inputUserName");
-        String inputPassword = config.getStr("inputPassword");
-        String outputJdbcUrl = config.getStr("outputJdbcUrl");
+        String inputJdbcUrl   = config.getStr("inputJdbcUrl");
+        String inputUserName  = config.getStr("inputUserName");
+        String inputPassword  = config.getStr("inputPassword");
+        String outputJdbcUrl  = config.getStr("outputJdbcUrl");
         String outputUserName = config.getStr("outputUserName");
         String outputPassword = config.getStr("outputPassword");
-        String prefix = config.getStr("prefix");
-        String tables = config.getStr("tables");
-        String[] split = tables.split(",");
-        // 获取数据源类型
-        String inputDatabaseType = inputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1");
-        String outputDatabaseType = outputJdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1");
+        String prefix         = config.getStr("prefix");
+        String tables         = config.getStr("tables");
+        String[] split        = tables.split(",");
+
+        // 从 JDBC URL 中提取数据库类型，由工厂获取对应方言处理器
+        String inputType  = extractDatabaseType(inputJdbcUrl);
+        String outputType = extractDatabaseType(outputJdbcUrl);
+        DialectHandler inputDialect  = DialectFactory.getDialect(inputType);
+        DialectHandler outputDialect = DialectFactory.getDialect(outputType);
 
         try (Connection conn = DriverManager.getConnection(outputJdbcUrl, outputUserName, outputPassword);
              Statement stmt = conn.createStatement()) {
@@ -39,28 +65,30 @@ public class CreateTable {
             String outputSchema = conn.getSchema();
             for (String tableName : split) {
                 try {
-                    TableMetaData tableMetaData = generateTableDDL(inputJdbcUrl, inputUserName, inputPassword, tableName, prefix, isRequiresKey);
-                    if (tableMetaData == null) continue;
-                    StringBuilder ddl = tableMetaData.getDdl();
-                    LinkedHashMap<String, String> Comments = tableMetaData.getComments();
+                    TableMetaData meta = generateTableDDL(
+                            inputJdbcUrl, inputUserName, inputPassword,
+                            inputDialect, tableName, prefix, isRequiresKey);
+                    if (meta == null) continue;
 
-                    String finalDDL = ddlTransform(ddl, inputDatabaseType, outputDatabaseType, outputSchema);
+                    // Writer 侧：类型映射 + schema 替换 + 语法转换
+                    String finalDDL = outputDialect.transformDDL(meta.getDdl().toString(), outputSchema);
                     System.out.println("------------------------------------------------------------");
                     if (!finalDDL.contains("不存在")) {
                         System.out.printf("%d. %s%n", i++, finalDDL);
                         stmt.executeUpdate(finalDDL);
                         System.out.println(prefix + tableName + "建表语句已执行");
+                        // Writer 侧：写额外注释 SQL（如 PostgreSQL 的 COMMENT ON；MySQL 为空实现）
+                        outputDialect.writeTableComments(stmt, outputSchema,
+                                prefix + tableName, meta.getComments());
                         SQLWarning warning = stmt.getWarnings();
-                        if ("postgresql".equalsIgnoreCase(outputDatabaseType)) {
-                            addPostgresqlComments(stmt, outputSchema, prefix + tableName, Comments);
-                        }
                         while (warning != null) {
                             System.out.println("注意: " + warning.getMessage());
                             warning = warning.getNextWarning();
                         }
-                        stmt.clearWarnings(); // 清除当前警告，mysql会保留stmt所有已执行sql的警告，postgresql仅保留最近一次执行sql的警告
-                    } else
+                        stmt.clearWarnings(); // mysql会保留所有警告；postgresql仅保留最近一次
+                    } else {
                         System.out.printf("%s%n", finalDDL);
+                    }
                 } catch (SQLException e) {
                     System.err.println("创建表 " + prefix + tableName + " 时出错: " + e.getMessage());
                 }
@@ -70,279 +98,167 @@ public class CreateTable {
         }
     }
 
-    private static String ddlTransform(StringBuilder ddl, String inputDatabaseType, String outputDatabaseType, String outputSchema) {
-        if ("mysql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
-            return ddl.toString();
-        } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
-            return ddl.toString()
-                    .replaceAll("(?<=EXISTS\\s)[^.]+(?=\\.)", outputSchema)
-                    .replaceAll(" COMMENT '(?:''|[^'])*'", "");
-        } else if ("mysql".equalsIgnoreCase(inputDatabaseType) && "postgresql".equalsIgnoreCase(outputDatabaseType)) {
-            return ddl.toString()
-                    .replaceAll("(?<=EXISTS\\s)(?=\\S+)", outputSchema + ".")
-                    .replaceAll("\\bTINYINT\\b", "int2")
-                    .replaceAll("\\bBIT\\(1\\)", "bool") // jdbc会把TINYINT(1)转化为BIT(1)，但TINYINT不变
-                    .replaceAll("\\bFLOAT\\b", "float4")
-                    .replaceAll("\\bDOUBLE\\b", "float8")
-                    .replaceAll("\\bDATETIME\\b", "timestamp")
-                    .replaceAll("\\bTIMESTAMP\\b", "timestamptz")
-                    .replaceAll("\\bTINYblob\\b", "bytea")
-                    .replaceAll("\\bBLOB\\b", "bytea")
-                    .replaceAll("\\bMEDIUMBLOB\\b", "bytea")
-                    .replaceAll("\\bLONGBLOB\\b", "bytea")
-                    .replaceAll(" COMMENT '(?:''|[^'])*'", "");
-        } else if ("postgresql".equalsIgnoreCase(inputDatabaseType) && "mysql".equalsIgnoreCase(outputDatabaseType)) {
-            return ddl.toString()
-                    .replaceAll("(?<=EXISTS\\s)[^.]+\\.", "")
-                    .replaceAll("\\bbpchar\\b", "char")
-                    // 不带长度的varchar转为text。mysql的varchar长度max=16383，超过请手动转为text系列
-                    .replaceAll("\\bvarchar\\b(?!\\()", "text")
-                    .replaceAll("\\btimestamp\\b", "datetime")
-                    .replaceAll("\\btimestamptz\\b", "timestamp")
-                    .replaceAll("\\bfloat4\\b", "float")
-                    .replaceAll("\\bfloat8\\b", "double")
-                    .replaceAll("\\bbytea\\b", "longblob")
-                    .replaceAll("\\bjsonb\\b", "json");
-        } else
-            return ddl.toString();
-    }
+    // ===================== 从源库读取表结构，生成中间 DDL =====================
 
-    private static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password, String tableName, String prefix, boolean isRequiresKey) throws SQLException {
-        // postgresql中，getTables、getColumns方法中tableName为null或空字符串则会获取所有表
+    /**
+     * 连接源库，通过 {@code inputDialect}（Reader 侧）读取元数据并生成 DDL。
+     *
+     * <p>生成的 DDL 是"方言中立"的中间格式：
+     * 类型名保留源库原始名称，注释等源库特有语法由 inputDialect 内联追加。
+     * 写入目标库之前，由 outputDialect.transformDDL() 完成类型映射和语法转换。
+     */
+    private static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password,
+                                                   DialectHandler inputDialect,
+                                                   String tableName, String prefix,
+                                                   boolean isRequiresKey) throws SQLException {
+        // postgresql 中 getTables/getColumns 若 tableName 为空会返回所有表
         if (StrUtil.isBlank(tableName)) return null;
+
         Properties props = new Properties();
         props.setProperty("user", userName);
         props.setProperty("password", password);
-        props.setProperty("useInformationSchema", "true");// 默认为false，mysql5.7需改为true才能获取表名注释
+        props.setProperty("useInformationSchema", "true"); // mysql5.7 需改为 true 才能获取表注释
+
         try (Connection conn = DriverManager.getConnection(jdbcUrl, props)) {
             DatabaseMetaData metaData = conn.getMetaData();
-            List<String> columns = new ArrayList<>();
-            LinkedHashMap<String, String> Comments = new LinkedHashMap<>(); //postgresql需单独收集字段注释
-            List<String> serialColumnName = new ArrayList<>();//mysql建表语句使用serial，无需手动加上UNIQUE，用于后面排除DDL的UNIQUE
+            String catalog  = conn.getCatalog(); // mysql 的 catalog 即数据库名，需指定以避免查询到其他库
+            String schema   = conn.getSchema();
+            List<String> columns      = new ArrayList<>();
+            LinkedHashMap<String, String> comments = new LinkedHashMap<>(); // postgresql 需单独收集字段注释
+            List<String> serialColumns = new ArrayList<>(); // 记录自增列，用于后面排除多余 UNIQUE
 
-            String databaseProductName = metaData.getDatabaseProductName();
+            // 1. 检查表是否存在，读取表注释
             String tableComment;
-            String catalog = conn.getCatalog(); // mysql的catalog即数据库名，需指定以避免查询到其他库
-            String schema = conn.getSchema();
             try (ResultSet tableRs = metaData.getTables(catalog, schema, tableName, new String[]{"TABLE"})) {
                 if (tableRs.next()) {
-                    String remarks = tableRs.getString("REMARKS");// 没有表名注释postgresql为null
+                    String remarks = tableRs.getString("REMARKS"); // 没有表注释时 postgresql 为 null
                     tableComment = remarks != null ? remarks.replace("'", "''") : "";
-                    Comments.put(tableName, tableComment);
+                    comments.put(tableName, tableComment);
                 } else {
-                    StringBuilder message = new StringBuilder("来源表").append(tableName).append("不存在");
-                    return new TableMetaData(message, Comments, schema, tableName);
+                    StringBuilder msg = new StringBuilder("来源表").append(tableName).append("不存在");
+                    return new TableMetaData(msg, comments, schema, tableName);
                 }
             }
-            try (ResultSet columnsRs = metaData.getColumns(catalog, schema, tableName, null)) {
-                while (columnsRs.next()) {
-                    String columnName = columnsRs.getString("COLUMN_NAME");
-                    String typeName = columnsRs.getString("TYPE_NAME");
-                    String remarks = columnsRs.getString("REMARKS");
-                    int columnSize = columnsRs.getInt("COLUMN_SIZE");
-                    int decimalDigits = columnsRs.getInt("DECIMAL_DIGITS");
-                    int nullable = columnsRs.getInt("NULLABLE");
-                    String defaultValue = columnsRs.getString("COLUMN_DEF");
-                    String isAutoIncrement = columnsRs.getString("IS_AUTOINCREMENT");
-                    StringBuilder columnDef = new StringBuilder();
-                    String lowerType = typeName.toLowerCase();
-                    // 收集注释信息，postgresql无注释时为null，mysql无注释时为''
+
+            // 2. 遍历所有列，委托 inputDialect 处理方言差异
+            try (ResultSet colRs = metaData.getColumns(catalog, schema, tableName, null)) {
+                while (colRs.next()) {
+                    String columnName    = colRs.getString("COLUMN_NAME");
+                    String typeName      = colRs.getString("TYPE_NAME");
+                    String remarks       = colRs.getString("REMARKS");
+                    int    columnSize    = colRs.getInt("COLUMN_SIZE");
+                    int    decimalDigits = colRs.getInt("DECIMAL_DIGITS");
+                    int    nullable      = colRs.getInt("NULLABLE");
+                    String defaultValue  = colRs.getString("COLUMN_DEF");
+                    String isAutoIncrement = colRs.getString("IS_AUTOINCREMENT");
+
+                    // 收集注释（postgresql 无注释时为 null，mysql 无注释时为 ''）
                     if (StrUtil.isNotBlank(remarks)) {
-                        remarks = remarks.replace("'", "''");//输入时不接受注释内容有单独的'，可写成''，会转义为'
-                        Comments.put(columnName, remarks);
+                        remarks = remarks.replace("'", "''"); // 注释内容的单引号转义
+                        comments.put(columnName, remarks);
                     }
+
+                    StringBuilder columnDef = new StringBuilder();
+
+                    // mysql 和 postgresql 的 serial 输出写法差异极大，但可统一用 serial 输入
                     if ("YES".equalsIgnoreCase(isAutoIncrement)) {
-                        // mysql和postgresql的serial输出写法差异极大，但可用统一用serial输入
                         columnDef.append(columnName).append(" serial");
-                        if (StrUtil.isNotBlank(remarks)) {
-                            columnDef.append(" COMMENT '").append(remarks).append("'");
-                        }
+                        // Reader 侧内联注释（PG 为空实现，MySQL 会追加 COMMENT 'xxx'）
+                        inputDialect.appendInlineComment(columnDef, remarks);
                         columns.add(columnDef.toString());
-                        serialColumnName.add(columnName);
+                        serialColumns.add(columnName);
                         continue;
                     }
+
+                    // 列名 + 类型名
                     columnDef.append(columnName).append(" ").append(typeName);
 
-                    if ("numeric".equals(lowerType) || "decimal".equals(lowerType)) {
-                        if (columnSize > 0) {
-                            columnDef.append("(").append(columnSize);
-                            if (decimalDigits > 0) {
-                                columnDef.append(",").append(decimalDigits);
-                            }
-                            columnDef.append(")");
-                        }
-                    } else if (isTimeType(lowerType)) { // 时间系列字段长度处理
-                        // 输入时，postgresql不写长度默认为6，mysql不写长度默认为0
-                        if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-                            columnDef.append("(").append(decimalDigits).append(")");
-                        } else if ("MySQL".equalsIgnoreCase(databaseProductName)) {
-                            int precision = calculateMySQLTimePrecision(lowerType, columnSize);
-                            columnDef.append("(").append(precision).append(")");
-                        }
-                    } else if (typeRequiresLength(lowerType)) { // char系列字段长度处理
-                        if (columnSize > 0 && columnSize < 10485760) { //postgresql不带长度的varchar的columnSize是2147483647，直接省略
-                            columnDef.append("(").append(columnSize).append(")");
-                        }
-                    }
+                    // ① 类型精度（委托 Reader 侧方言）
+                    inputDialect.appendTypePrecision(columnDef, typeName, columnSize, decimalDigits);
 
+                    // ② NOT NULL
                     if (nullable == DatabaseMetaData.columnNoNulls) {
                         columnDef.append(" NOT NULL");
                     }
-                    if (defaultValue != null) {
-                        if ("PostgreSQL".equalsIgnoreCase(databaseProductName)) {
-                            int index = defaultValue.indexOf("::");// 去掉postgresql类型转换语法,因为套用在mysql会出现问题
-                            if (index != -1) {
-                                defaultValue = defaultValue.substring(0, index);
-                            }
-                            columnDef.append(" DEFAULT ").append(defaultValue);
-                            if ("CURRENT_TIMESTAMP".equals(defaultValue)) {
-                                columnDef.append("(").append(decimalDigits).append(")");
-                            }
-                        } else if ("MySQL".equalsIgnoreCase(databaseProductName)) {
-                            if (typeRequiresLength(lowerType)) {
-                                // mysql的char系列字段不带单引号
-                                columnDef.append(" DEFAULT '").append(defaultValue).append("'");
-                            } else
-                                columnDef.append(" DEFAULT ").append(defaultValue);
-                        }
-                    }
-                    if (StrUtil.isNotBlank(remarks)) {
-                        columnDef.append(" COMMENT '").append(remarks).append("'");
-                    }
+
+                    // ③ DEFAULT（委托 Reader 侧方言）
+                    inputDialect.appendDefaultValue(columnDef, typeName, defaultValue, decimalDigits);
+
+                    // ④ 内联注释（委托 Reader 侧方言；PG 为空实现，MySQL 追加 COMMENT 'xxx'）
+                    inputDialect.appendInlineComment(columnDef, remarks);
+
                     columns.add(columnDef.toString());
                 }
             }
-            //获取键信息
+
+            // 3. 读取主键
             Map<Short, String> primaryKeyMap = new TreeMap<>();
             Set<String> primaryKeyNames = new HashSet<>();
             Map<String, TreeMap<Short, String>> uniqueConstraints = new LinkedHashMap<>();//唯一键的字段组
             if (isRequiresKey) {
-                // 获取主键信息（按顺序）
                 try (ResultSet pkRs = metaData.getPrimaryKeys(catalog, schema, tableName)) {
                     while (pkRs.next()) {
                         String pkColumn = pkRs.getString("COLUMN_NAME");
-                        short keySeq = pkRs.getShort("KEY_SEQ"); //键的字段的序号
+                        short keySeq = pkRs.getShort("KEY_SEQ"); // 键字段序号
                         primaryKeyMap.put(keySeq, pkColumn);
                         String pkName = pkRs.getString("PK_NAME");
-                        if (pkName != null) {
-                            primaryKeyNames.add(pkName);
-                        }
+                        if (pkName != null) primaryKeyNames.add(pkName);
                     }
                 }
-                // 获取唯一键信息
-                try (ResultSet indexRs = metaData.getIndexInfo(catalog, schema, tableName, false, false)) {
-                    while (indexRs.next()) {
-                        String indexName = indexRs.getString("INDEX_NAME");
-                        boolean nonUnique = indexRs.getBoolean("NON_UNIQUE");
-                        String columnName = indexRs.getString("COLUMN_NAME");
-                        short seq = indexRs.getShort("ORDINAL_POSITION");
-                        short type = indexRs.getShort("TYPE");//排除TYPE为0即tableIndexStatistic统计信息
+                // 读取唯一键
+                try (ResultSet idxRs = metaData.getIndexInfo(catalog, schema, tableName, false, false)) {
+                    while (idxRs.next()) {
+                        String  indexName = idxRs.getString("INDEX_NAME");
+                        boolean nonUnique = idxRs.getBoolean("NON_UNIQUE");
+                        String  colName   = idxRs.getString("COLUMN_NAME");
+                        short   seq       = idxRs.getShort("ORDINAL_POSITION");
+                        short   type      = idxRs.getShort("TYPE"); // TYPE=0 即 tableIndexStatistic，需排除
                         // 排除主键索引和统计信息
-                        if (primaryKeyNames.contains(indexName) || type == DatabaseMetaData.tableIndexStatistic || columnName == null) {
-                            continue;
-                        }
+                        if (primaryKeyNames.contains(indexName)
+                                || type == DatabaseMetaData.tableIndexStatistic
+                                || colName == null) continue;
                         if (!nonUnique) {
-                            uniqueConstraints.computeIfAbsent(indexName, k -> new TreeMap<>()).put(seq, columnName);
+                            uniqueConstraints
+                                    .computeIfAbsent(indexName, k -> new TreeMap<>())
+                                    .put(seq, colName);
                         }
                     }
                 }
-                uniqueConstraints.entrySet().removeIf(entry -> {//mysql使用serial会自动带unique，排除DDL的UNIQUE
-                    TreeMap<Short, String> keyColumnList = entry.getValue();
-                    return keyColumnList.size() == 1 && serialColumnName.contains(keyColumnList.get((short) 1));
+                // mysql 使用 serial 会自动带 UNIQUE，排除 DDL 中重复的 UNIQUE 约束
+                uniqueConstraints.entrySet().removeIf(entry -> {
+                    TreeMap<Short, String> cols = entry.getValue();
+                    return cols.size() == 1 && serialColumns.contains(cols.get((short) 1));
                 });
             }
-            // 构建DDL
-            StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
-            if (schema != null) {
-                ddl.append(schema).append(".");
-            }
-            ddl.append(prefix).append(tableName).append("(\n");
-            ddl.append(String.join(",\n", columns));// 添加列定义
 
+            // 4. 拼装 DDL
+            StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
+            if (schema != null) ddl.append(schema).append(".");
+            ddl.append(prefix).append(tableName).append("(\n");
+            ddl.append(String.join(",\n", columns));
             if (isRequiresKey) {
-                if (!primaryKeyMap.isEmpty()) {// 添加主键约束
+                if (!primaryKeyMap.isEmpty()) {
                     ddl.append(",\n\tPRIMARY KEY (");
                     ddl.append(String.join(", ", primaryKeyMap.values()));
                     ddl.append(")");
                 }
-                for (Map.Entry<String, TreeMap<Short, String>> entry : uniqueConstraints.entrySet()) {// 添加唯一键约束
+                for (Map.Entry<String, TreeMap<Short, String>> entry : uniqueConstraints.entrySet()) {
                     ddl.append(",\n\t");
                     ddl.append("UNIQUE (").append(String.join(", ", entry.getValue().values())).append(")");
                 }
             }
-            if (!tableComment.isEmpty()) {
-                ddl.append("\n) COMMENT '").append(tableComment).append("';");
-            } else {
-                ddl.append("\n);");
-            }
-            return new TableMetaData(ddl, Comments, schema, tableName);
+
+            // ⑤ 表级注释（委托 Reader 侧方言：MySQL 追加 ") COMMENT '...';"，PG 追加 ");"）
+            inputDialect.appendTableComment(ddl, tableComment);
+
+            return new TableMetaData(ddl, comments, schema, tableName);
         }
     }
 
-    private static void addPostgresqlComments(Statement stmt, String schema, String tableName, LinkedHashMap<String, String> comments) {
-        // 添加表注释
-        if (!comments.isEmpty()) {
-            String tableComment = comments.values().iterator().next();
-            String tableCommentSql = String.format("COMMENT ON TABLE %s.%s IS '%s';", schema, tableName, tableComment);
-            System.out.println(tableCommentSql);
-            try {
-                stmt.executeUpdate(tableCommentSql);
-            } catch (SQLException e) {
-                System.err.printf("添加表 %s 注释出错: %s%n", tableName, e.getMessage());
-            }
-        }
-        // 移除第一个元素（表注释）后添加字段注释
-        LinkedHashMap<String, String> columnComments = new LinkedHashMap<>(comments);
-        if (!columnComments.isEmpty()) {
-            columnComments.remove(columnComments.keySet().iterator().next());
-        }
-        for (Map.Entry<String, String> entry : columnComments.entrySet()) {
-            String columnName = entry.getKey();
-            String comment = entry.getValue();
-            String commentSql = String.format("COMMENT ON COLUMN %s.%s.%s IS '%s';", schema, tableName, columnName, comment);
-            System.out.println(commentSql);
-            try {
-                stmt.executeUpdate(commentSql);
-            } catch (SQLException e) {
-                System.err.printf("添加字段 %s 注释出错: %s%n", columnName, e.getMessage());
-            }
-        }
-    }
+    // ===================== 工具方法 =====================
 
-    private static boolean isTimeType(String lowerType) {
-        return lowerType.equals("timestamp")
-                || lowerType.equals("time")
-                || lowerType.equals("timestamptz") //postgresql
-                || lowerType.equals("timetz") //postgresql
-                || lowerType.equals("datetime"); //mysql
-    }
-
-    private static boolean typeRequiresLength(String lowerType) {
-        return lowerType.startsWith("varchar")
-                || lowerType.startsWith("char")
-                || lowerType.startsWith("bpchar") //postgresql
-                || lowerType.startsWith("varbit") //postgresql
-                || lowerType.startsWith("bit")
-                || lowerType.startsWith("varbinary") //mysql
-                || lowerType.startsWith("binary"); //mysql
-    }
-
-    private static int calculateMySQLTimePrecision(String type, int columnSize) {
-        int defaultLength;
-        switch (type) {
-            case "timestamp":
-            case "datetime":
-                defaultLength = 19;  // 默认长度：'YYYY-MM-DD HH:MM:SS'
-                break;
-            case "time":
-                defaultLength = 8;   // 默认长度：'HH:MM:SS'
-                break;
-            default:
-                return 0;
-        }
-        if (columnSize > defaultLength) {
-            return (columnSize - defaultLength) - 1;
-        }
-        return 0;
+    /** 从 JDBC URL 中提取数据库类型标识符（小写）。例如 jdbc:mysql://... → "mysql" */
+    private static String extractDatabaseType(String jdbcUrl) {
+        return jdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1").toLowerCase();
     }
 }
