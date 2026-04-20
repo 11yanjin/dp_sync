@@ -21,5 +21,6 @@
   "tableDispatchBatchInterval": 3,
   "executeOnce": "yes",
   "prefix": "test_",
+  "suffix": "",
   "tables": "test1,test_customers"
 }

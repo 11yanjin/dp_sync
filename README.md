@@ -21,6 +21,7 @@
 "tableDispatchBatchInterval":3, // 批次间隔（分钟）  
 "executeImmediately":"yes", // 值为"yes"或"true"则立即执行一次，否则不执行  
 "prefix":"o_full_", // 去向表的前缀  
+"suffix":"o_full_", // 去向表的后缀  
 "tables":"test1,ff,table1,sys_user"  
 }
 

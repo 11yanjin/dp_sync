@@ -50,6 +50,7 @@ public class CreateTable {
         String outputUserName = config.getStr("outputUserName");
         String outputPassword = config.getStr("outputPassword");
         String prefix         = config.getStr("prefix");
+        String suffix         = config.getStr("suffix");
         String tables         = config.getStr("tables");
         String[] split        = tables.split(",");
 
@@ -67,7 +68,7 @@ public class CreateTable {
                 try {
                     TableMetaData meta = generateTableDDL(
                             inputJdbcUrl, inputUserName, inputPassword,
-                            inputDialect, tableName, prefix, isRequiresKey);
+                            inputDialect, tableName, prefix, suffix ,isRequiresKey);
                     if (meta == null) continue;
 
                     // Writer 侧：类型映射 + schema 替换 + 语法转换
@@ -76,10 +77,10 @@ public class CreateTable {
                     if (!finalDDL.contains("不存在")) {
                         System.out.printf("%d. %s%n", i++, finalDDL);
                         stmt.executeUpdate(finalDDL);
-                        System.out.println(prefix + tableName + "建表语句已执行");
+                        System.out.println(prefix + tableName + suffix + "建表语句已执行");
                         // Writer 侧：写额外注释 SQL（如 PostgreSQL 的 COMMENT ON；MySQL 为空实现）
                         outputDialect.writeTableComments(stmt, outputSchema,
-                                prefix + tableName, meta.getComments());
+                                prefix + tableName + suffix, meta.getComments());
                         SQLWarning warning = stmt.getWarnings();
                         while (warning != null) {
                             System.out.println("注意: " + warning.getMessage());
@@ -90,7 +91,7 @@ public class CreateTable {
                         System.out.printf("%s%n", finalDDL);
                     }
                 } catch (SQLException e) {
-                    System.err.println("创建表 " + prefix + tableName + " 时出错: " + e.getMessage());
+                    System.err.println("创建表 " + prefix + tableName + suffix +" 时出错: " + e.getMessage());
                 }
             }
         } catch (SQLException e) {
@@ -109,7 +110,7 @@ public class CreateTable {
      */
     private static TableMetaData generateTableDDL(String jdbcUrl, String userName, String password,
                                                    DialectHandler inputDialect,
-                                                   String tableName, String prefix,
+                                                   String tableName, String prefix,String suffix,
                                                    boolean isRequiresKey) throws SQLException {
         // postgresql 中 getTables/getColumns 若 tableName 为空会返回所有表
         if (StrUtil.isBlank(tableName)) return null;
@@ -234,7 +235,7 @@ public class CreateTable {
             // 4. 拼装 DDL
             StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ");
             if (schema != null) ddl.append(schema).append(".");
-            ddl.append(prefix).append(tableName).append("(\n");
+            ddl.append(prefix).append(tableName).append(suffix).append("(\n");
             ddl.append(String.join(",\n", columns));
             if (isRequiresKey) {
                 if (!primaryKeyMap.isEmpty()) {

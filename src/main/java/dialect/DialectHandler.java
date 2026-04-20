@@ -98,7 +98,7 @@ public interface DialectHandler {
      *
      * @param stmt        已打开的 {@link Statement}
      * @param outputSchema 目标库 schema
-     * @param tableName   目标表名（已含 prefix）
+     * @param tableName   目标表名（已含 prefix和suffix）
      * @param comments    有序 Map：第一个 entry 为表注释（key=表名），后续为字段注释
      * @throws SQLException 执行 SQL 失败时抛出
      */

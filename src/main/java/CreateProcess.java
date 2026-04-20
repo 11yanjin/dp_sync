@@ -41,6 +41,7 @@ public class CreateProcess {
         int tableDispatchBatchInterval = config.getInt("tableDispatchBatchInterval");
         String executeImmediately = config.getStr("executeImmediately");
         String prefix = config.getStr("prefix");
+        String suffix = config.getStr("suffix");
         String tables = config.getStr("tables");
         // 海豚调度其工作类
         String dpHttpUrl = config.getStr("dpHttpUrl");
@@ -90,7 +91,7 @@ public class CreateProcess {
                 }
                 columnList4Out.add("\"" + item + "\"");
             }
-            String outputTableName = prefix + tableName;
+            String outputTableName = prefix + tableName + suffix;
             String preSql1;
             if (deleteWhere.equals("truncate") || deleteWhere.equals("1=1")) {
                 preSql1 = "truncate table " + outputTableName;
