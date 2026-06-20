@@ -16,6 +16,8 @@ public class Main {
                 CreateTable.execute(config, true);
             } else if (args[0].equalsIgnoreCase("CreateTableNoKey")) {
                 CreateTable.execute(config, false);
+            } else if (args[0].equalsIgnoreCase("CreateHiveTable")) {
+                CreateHiveTable.execute(config);
             } else if (StrUtil.isNumeric(args[0])) {
                 OffLine.execute(config, args[0]);
             } else {

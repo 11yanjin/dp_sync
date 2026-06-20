@@ -40,6 +40,8 @@ public class SyncConfig {
     private String prefix;
     private String suffix;
     private String tables;
+    /** Hive 存储格式（STORED AS），留空默认 parquet，可填 orc。仅 CreateHiveTable 使用。 */
+    private String hiveStorageFormat;
 
     /** 读取并解析配置文件，文件不存在或为空时抛出异常。 */
     public static SyncConfig load(String configPath) {

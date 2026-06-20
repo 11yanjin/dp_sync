@@ -22,5 +22,6 @@
   "executeImmediately": "yes",
   "prefix": "test_",
   "suffix": "",
-  "tables": "test1,test_customers"
+  "tables": "test1,test_customers",
+  "hiveStorageFormat": ""
 }
