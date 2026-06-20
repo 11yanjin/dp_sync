@@ -23,7 +23,10 @@
 "prefix":"o_full_", // 去向表的前缀  
 "suffix":"o_full_", // 去向表的后缀  
 "tables":"test1,ff,table1,sys_user",  
-"hiveStorageFormat":"" // 仅 CreateHiveTable 使用：Hive 存储格式(STORED AS)，留空默认 parquet，也可填 orc  
+"hiveStorageFormat":"", // 仅 CreateHiveTable 使用：Hive 存储格式(STORED AS)，留空默认 orc，也可填 parquet 或 textfile（注意：向 Hive 同步数据仅支持 orc/textfile，parquet 无法写入）  
+"hiveDefaultFS":"", // 仅 CreateHiveProcess 使用：HDFS defaultFS，HA 场景填 nameservice（如 hdfs://nameservice1）；留空则自动取自 Hive 表 Location  
+"hiveFieldDelimiter":"", // 仅 CreateHiveProcess 使用：hdfswriter 字段分隔符，留空默认 Hive 文本默认分隔符 （ORC 表忽略此项）  
+"hiveHadoopConfig":{} // 仅 CreateHiveProcess 使用：hdfswriter 的 hadoopConfig，HA 场景填 dfs.nameservices/dfs.ha.namenodes.*/dfs.namenode.rpc-address.*/dfs.client.failover.proxy.provider.* 等；为空则省略  
 }
 
 1.不带参数为创建工作流
@@ -39,3 +42,6 @@ java -jar dp_sync-1.jar 17391796121440
 
 5.可以接CreateHiveTable参数（不区分大小写），根据 MySQL/PostgreSQL 源表结构在 Hive 中建表。input* 填源库，output* 填 Hive（jdbc:hive2://host:10000/库）。为避免复杂类型映射，Hive 列类型仅 bigint/double/string 三种；DDL 形如 库.表，库名取自 output URL 路径段；不含主键、唯一键等约束，如：  
 java -jar dp_sync-1.jar CreateHiveTable  
+
+6.可以接CreateHiveProcess参数（不区分大小写），创建"MySQL/PostgreSQL → Hive"的数据同步工作流（DataX hdfswriter 写 HDFS）。input* 填源库，output* 填 Hive。前提：目标 Hive 表须已存在（先跑 CreateHiveTable）且存储格式为 orc/textfile。HDFS 路径与 fileType 自动通过 DESCRIBE FORMATTED 探测；HA 场景需填 hiveDefaultFS 与 hiveHadoopConfig。where/specified/deleteWhere/cycle 等可选配置语义同创建工作流，如：  
+java -jar dp_sync-1.jar CreateHiveProcess  

@@ -59,8 +59,8 @@ public class CreateProcess {
         }
     }
 
-    /** 取已有 projectCode，没有则在 DolphinScheduler 中创建项目。 */
-    private static String resolveProjectCode(SyncConfig config, DolphinSchedulerTool dpTool) {
+    /** 取已有 projectCode，没有则在 DolphinScheduler 中创建项目。包级可见以便 CreateHiveProcess 复用。 */
+    static String resolveProjectCode(SyncConfig config, DolphinSchedulerTool dpTool) {
         if (StrUtil.isNotBlank(config.getDpProjectCode())) {
             return config.getDpProjectCode();
         }
@@ -69,8 +69,8 @@ public class CreateProcess {
         return dpTool.createProject(dpProject);
     }
 
-    /** 解析 "99 as id,'张三' as name" 形式的直接指定值字段，返回 字段名(小写)->值 的映射。 */
-    private static Map<String, String> parseSpecified(String specified) {
+    /** 解析 "99 as id,'张三' as name" 形式的直接指定值字段，返回 字段名(小写)->值 的映射。包级可见以便 CreateHiveProcess 复用。 */
+    static Map<String, String> parseSpecified(String specified) {
         Map<String, String> fieldMapping = new HashMap<>();
         if (StrUtil.isBlank(specified)) return fieldMapping;
         for (String expr : specified.split(",")) {
@@ -130,8 +130,8 @@ public class CreateProcess {
         }
     }
 
-    /** 创建工作流定义、上线、配置定时调度，并按需立即执行一次。 */
-    private static void createAndScheduleWorkflow(SyncConfig config, DolphinSchedulerTool dpTool,
+    /** 创建工作流定义、上线、配置定时调度，并按需立即执行一次。包级可见以便 CreateHiveProcess 复用。 */
+    static void createAndScheduleWorkflow(SyncConfig config, DolphinSchedulerTool dpTool,
                                                   String dpProjectCode, String taskCode, String tableName,
                                                   String jobConfig, int currentTableNum) {
         String outputTableName = config.getPrefix() + tableName + config.getSuffix();
@@ -152,7 +152,7 @@ public class CreateProcess {
         }
     }
 
-    private static String getCron(SyncConfig config, int currentTableNum) {
+    static String getCron(SyncConfig config, int currentTableNum) {
         String cron = "0 a b * * ? *";
         int total = (currentTableNum / config.getTableDispatchBatchSize()) * config.getTableDispatchBatchInterval();
         int hour = (total / 60) + config.getHourBegin();
@@ -189,8 +189,8 @@ public class CreateProcess {
         return ret;
     }
 
-    /** 从 JDBC URL 提取驱动类型，如 jdbc:postgresql://... → "postgresql"。 */
-    private static String extractDriverType(String jdbcUrl) {
+    /** 从 JDBC URL 提取驱动类型，如 jdbc:postgresql://... → "postgresql"。包级可见以便 CreateHiveProcess 复用。 */
+    static String extractDriverType(String jdbcUrl) {
         return jdbcUrl.replaceAll("jdbc:([^:]+):.*", "$1");
     }
 }

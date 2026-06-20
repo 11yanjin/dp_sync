@@ -69,14 +69,14 @@ public class HiveDialect {
      *   `name` string
      * )
      * COMMENT '表注释'
-     * STORED AS PARQUET
+     * STORED AS ORC
      * </pre>
      *
      * @param database     Hive 库名（来自 output JDBC URL 路径段），为空则不加库前缀
      * @param tableName    完整表名（已含 prefix/suffix）
      * @param columnDefs   已拼好的列定义列表（每项形如 {@code `col` type COMMENT '...'}）
      * @param tableComment 表注释，可能为空
-     * @param storageFormat 存储格式（如 PARQUET / ORC），为空则默认 PARQUET
+     * @param storageFormat 存储格式（orc / parquet / textfile），为空则默认 ORC
      * @return 完整可执行的 Hive DDL（不含结尾分号）
      */
     public static String buildCreateTableDDL(String database, String tableName, List<String> columnDefs,
@@ -91,7 +91,8 @@ public class HiveDialect {
         if (StrUtil.isNotBlank(tableComment)) {
             ddl.append("\nCOMMENT '").append(escape(tableComment)).append("'");
         }
-        String format = StrUtil.isBlank(storageFormat) ? "PARQUET" : storageFormat.trim().toUpperCase();
+        // 默认 ORC：DataX hdfswriter 仅支持 orc/textfile，默认 ORC 可让"建表→同步"开箱即用
+        String format = StrUtil.isBlank(storageFormat) ? "ORC" : storageFormat.trim().toUpperCase();
         ddl.append("\nSTORED AS ").append(format);
         return ddl.toString();
     }

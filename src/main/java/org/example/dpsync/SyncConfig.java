@@ -40,8 +40,14 @@ public class SyncConfig {
     private String prefix;
     private String suffix;
     private String tables;
-    /** Hive 存储格式（STORED AS），留空默认 parquet，可填 orc。仅 CreateHiveTable 使用。 */
+    /** Hive 存储格式（STORED AS），留空默认 orc，可填 orc/parquet/textfile。仅 CreateHiveTable 使用。 */
     private String hiveStorageFormat;
+    /** Hive 同步：HDFS defaultFS，HA 场景填 nameservice（如 hdfs://nameservice1）；留空则取自 DESCRIBE 的 Location。 */
+    private String hiveDefaultFS;
+    /** Hive 同步：hdfswriter 字段分隔符，留空默认 Hive 文本默认分隔符 （ORC 下忽略）。 */
+    private String hiveFieldDelimiter;
+    /** Hive 同步：hdfswriter 的 hadoopConfig，HA 场景填 dfs.nameservices 等；为空则省略该参数。 */
+    private java.util.Map<String, String> hiveHadoopConfig;
 
     /** 读取并解析配置文件，文件不存在或为空时抛出异常。 */
     public static SyncConfig load(String configPath) {

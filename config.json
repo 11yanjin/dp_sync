@@ -23,5 +23,8 @@
   "prefix": "test_",
   "suffix": "",
   "tables": "test1,test_customers",
-  "hiveStorageFormat": ""
+  "hiveStorageFormat": "",
+  "hiveDefaultFS": "",
+  "hiveFieldDelimiter": "",
+  "hiveHadoopConfig": {}
 }
