@@ -1,7 +1,7 @@
 package org.example.dpsync.dolphinscheduler;
 
 import cn.hutool.core.date.DateUtil;
-import cn.hutool.http.HttpResponse;
+import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
 import cn.hutool.json.JSONArray;
@@ -31,16 +31,41 @@ public class DolphinSchedulerTool {
         this.dpToken = dpToken;
     }
 
-    public Map<String, String> creatHeader() {
-        Map<String, String> httpHeaders = new HashMap<>();
-        httpHeaders.put("token", this.dpToken);
-        return httpHeaders;
+    // ===================== 通用 helper =====================
+
+    /** 拼接完整 API 地址：dpHttpUrl + "/dolphinscheduler" + path。 */
+    private String url(String path) {
+        return this.dpHttpUrl + "/dolphinscheduler" + path;
     }
 
-    public Map<String, String> creatHeader(String contentType) {
-        Map<String, String> httpHeaders = this.creatHeader();
-        httpHeaders.put("Content-Type", contentType);
-        return httpHeaders;
+    /** 仅带 token 的请求头（GET / DELETE 用）。 */
+    private Map<String, String> createHeader() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("token", this.dpToken);
+        return headers;
+    }
+
+    private Map<String, String> createHeader(String contentType) {
+        Map<String, String> headers = createHeader();
+        headers.put("Content-Type", contentType);
+        return headers;
+    }
+
+    /** 表单提交头（绝大多数 POST/PUT 用）。 */
+    private Map<String, String> formHeader() {
+        return createHeader("application/x-www-form-urlencoded");
+    }
+
+    /** JSON body 提交头。 */
+    private Map<String, String> jsonHeader() {
+        return createHeader("application/json");
+    }
+
+    /** 统一执行：发请求 → 解析 body → checkRetCode → 返回整个响应 JSON。 */
+    private JSONObject send(HttpRequest request, String errorMsg) {
+        JSONObject responseJson = new JSONObject(request.timeout(this.timeOut).execute().body());
+        this.checkRetCode(responseJson, errorMsg);
+        return responseJson;
     }
 
     public void checkRetCode(JSONObject retObj, String errorMsgPrefix) {
@@ -50,27 +75,27 @@ public class DolphinSchedulerTool {
         }
     }
 
+    // ===================== 项目 =====================
+
     public String createProject(DPProject dpProject) {
         Map<String, Object> body = new HashMap<>();
         body.put("projectName", dpProject.getProjectName());
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects").addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject responseJson = new JSONObject(execute.body());
-        this.checkRetCode(responseJson, "创建项目");
+        JSONObject responseJson = send(
+                HttpUtil.createPost(url("/projects")).addHeaders(formHeader()).form(body), "创建项目");
         return responseJson.getJSONObject("data").getStr("code");
     }
 
+    // ===================== 数据源 =====================
+
     public String createDataSource(DPDataSource dpDataSource) {
-        Map<String, String> header = this.creatHeader("application/json");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/datasources").addHeaders(header)).timeout(this.timeOut).body(new JSONObject(dpDataSource).toString()).execute();
-        JSONObject responseJson = new JSONObject(execute.body());
-        this.checkRetCode(responseJson, "创建数据源");
+        send(HttpUtil.createPost(url("/datasources")).addHeaders(jsonHeader())
+                .body(new JSONObject(dpDataSource).toString()), "创建数据源");
         int pageNo = 1;
         int pageSize = 1;
         String searchVal = dpDataSource.getName();
-        HttpResponse executeSearch = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/datasources?pageNo=" + pageNo + "&pageSize=" + pageSize + "&searchVal=" + searchVal).addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-        JSONObject queryResponseJson = new JSONObject(executeSearch.body());
-        this.checkRetCode(queryResponseJson, "查询数据源编码");
+        JSONObject queryResponseJson = send(HttpUtil.createGet(
+                url("/datasources?pageNo=" + pageNo + "&pageSize=" + pageSize + "&searchVal=" + searchVal))
+                .addHeaders(createHeader()), "查询数据源编码");
         JSONObject queryData = queryResponseJson.getJSONObject("data");
         JSONArray totalList = queryData.getJSONArray("totalList");
         if (totalList.isEmpty()) {
@@ -82,9 +107,8 @@ public class DolphinSchedulerTool {
 
     public List<String> listWorker() {
         List<String> ret = new ArrayList<>();
-        HttpResponse executeSearch = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/monitor/workers").addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-        JSONObject dataRet = new JSONObject(executeSearch.body());
-        this.checkRetCode(dataRet, "查询执行机器列表");
+        JSONObject dataRet = send(
+                HttpUtil.createGet(url("/monitor/workers")).addHeaders(createHeader()), "查询执行机器列表");
         JSONArray data = dataRet.getJSONArray("data");
         data.forEach((item) -> {
             JSONObject hostItem = (JSONObject) item;
@@ -93,12 +117,11 @@ public class DolphinSchedulerTool {
         return ret;
     }
 
+    // ===================== 工作流定义 =====================
+
     public void createProcessDefinition(String projectCode, DPProcessDefinition dpProcessDefinition) {
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition")
-                .addHeaders(header)).timeout(this.timeOut).form(new JSONObject(dpProcessDefinition)).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "创建工作流");
+        JSONObject dataRet = send(HttpUtil.createPost(url("/projects/" + projectCode + "/process-definition"))
+                .addHeaders(formHeader()).form(new JSONObject(dpProcessDefinition)), "创建工作流");
         JSONObject data = dataRet.getJSONObject("data");
         String code = data.getStr("code");
         Integer version = data.getInt("version");
@@ -107,10 +130,8 @@ public class DolphinSchedulerTool {
     }
 
     public void updateProcessDefinition(String projectCode, String processDefinitionCode, DPProcessDefinition dpProcessDefinition) {
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition/" + processDefinitionCode).addHeaders(header)).timeout(this.timeOut).form(new JSONObject(dpProcessDefinition)).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "更新工作流");
+        JSONObject dataRet = send(HttpUtil.createPost(url("/projects/" + projectCode + "/process-definition/" + processDefinitionCode))
+                .addHeaders(formHeader()).form(new JSONObject(dpProcessDefinition)), "更新工作流");
         JSONObject data = dataRet.getJSONObject("data");
         String code = data.getStr("code");
         Integer version = data.getInt("version");
@@ -126,9 +147,9 @@ public class DolphinSchedulerTool {
             if (i == batch) {
                 batchNum = genNum % 100;
             }
-            HttpResponse executeSearch = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/task-definition/gen-task-codes?genNum=" + batchNum).addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-            JSONObject dataRet = new JSONObject(executeSearch.body());
-            this.checkRetCode(dataRet, "生成工作流坐标");
+            JSONObject dataRet = send(HttpUtil.createGet(
+                    url("/projects/" + projectCode + "/task-definition/gen-task-codes?genNum=" + batchNum))
+                    .addHeaders(createHeader()), "生成工作流坐标");
             JSONArray data = dataRet.getJSONArray("data");
             result.addAll(data.toList(String.class));
         }
@@ -136,21 +157,17 @@ public class DolphinSchedulerTool {
     }
 
     public void delProcessDefinitionVersion(String projectCode, String processDefinitionCode, String versionId) {
-        Map<String, String> header = this.creatHeader();
-        HttpResponse execute = (HttpUtil.createRequest(Method.DELETE, this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/versions/" + versionId).addHeaders(header)).timeout(this.timeOut).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "删除工作流版本");
+        send(HttpUtil.createRequest(Method.DELETE,
+                url("/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/versions/" + versionId))
+                .addHeaders(createHeader()), "删除工作流版本");
     }
 
     public Map<String, String> queryList(String projectCode) {
         Map<String, String> processList = new LinkedHashMap<>();
         int pageNo = 1;
         while (true) {
-            String url = this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition";
-            url = url + "?pageSize=10&pageNo=" + pageNo;
-            HttpResponse execute = HttpUtil.createGet(url).addHeaders(creatHeader()).timeout(this.timeOut).execute();
-            JSONObject dataRet = new JSONObject(execute.body());
-            this.checkRetCode(dataRet, "查询工作流定义列表");
+            String requestUrl = url("/projects/" + projectCode + "/process-definition") + "?pageSize=10&pageNo=" + pageNo;
+            JSONObject dataRet = send(HttpUtil.createGet(requestUrl).addHeaders(createHeader()), "查询工作流定义列表");
 
             JSONObject data = dataRet.getJSONObject("data");
             if (data == null) {
@@ -176,12 +193,13 @@ public class DolphinSchedulerTool {
     public int release(String projectCode, String processDefinitionCode, String releaseState) {
         JSONObject body = new JSONObject();
         body.set("releaseState", releaseState);
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/release").addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "工作流上下线");
+        JSONObject dataRet = send(HttpUtil.createPost(
+                url("/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/release"))
+                .addHeaders(formHeader()).form(body), "工作流上下线");
         return dataRet.getInt("code");
     }
+
+    // ===================== 调度 =====================
 
     public void executeOnce(String projectCode, String processDefinitionCode) {
         JSONObject body = new JSONObject();
@@ -196,13 +214,9 @@ public class DolphinSchedulerTool {
         body.set("workerGroup", "default");
         body.set("dryRun", 0);
         body.set("scheduleTime", "");
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/executors/start-process-instance")
-                .addHeaders(header).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "执行一次");
+        send(HttpUtil.createPost(url("/projects/" + projectCode + "/executors/start-process-instance"))
+                .addHeaders(formHeader()).form(body), "执行一次");
     }
-
 
     public String createSchedule(String projectCode, String processDefinitionCode, String cron, Date startTime) {
         JSONObject body = new JSONObject();
@@ -214,10 +228,8 @@ public class DolphinSchedulerTool {
         body.set("warningType", "NONE");
         body.set("environmentCode", "");
         body.set("processDefinitionCode", processDefinitionCode);
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules").addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "创建调度器");
+        JSONObject dataRet = send(HttpUtil.createPost(url("/projects/" + projectCode + "/schedules"))
+                .addHeaders(formHeader()).form(body), "创建调度器");
         return dataRet.getJSONObject("data").getStr("id");
     }
 
@@ -230,18 +242,15 @@ public class DolphinSchedulerTool {
         body.set("workerGroup", "default");
         body.set("warningType", "NONE");
         body.set("environmentCode", "");
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createRequest(Method.PUT, this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules/" + scheduleId).addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "更新调度器");
+        JSONObject dataRet = send(HttpUtil.createRequest(Method.PUT, url("/projects/" + projectCode + "/schedules/" + scheduleId))
+                .addHeaders(formHeader()).form(body), "更新调度器");
         return dataRet.getJSONObject("data").getStr("id");
     }
 
     public int releaseSchedule(String projectCode, String scheduleId, String releaseState) {
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules/" + scheduleId + "/" + releaseState).addHeaders(header)).timeout(this.timeOut).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "调度上下线");
+        JSONObject dataRet = send(HttpUtil.createPost(
+                url("/projects/" + projectCode + "/schedules/" + scheduleId + "/" + releaseState))
+                .addHeaders(formHeader()), "调度上下线");
         return dataRet.getInt("code");
     }
 
@@ -258,17 +267,17 @@ public class DolphinSchedulerTool {
         return json;
     }
 
+    // ===================== 实例与日志 =====================
+
     public JSONObject queryProcessInstanceListPaging(String projectCode, String processDefineCode, String page, String limit, String timeStart, String timeEnd, String status, String host) {
-        HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances?pageNo=" + page + "&pageSize=" + limit + "&host=" + host + "&startDate=" + timeStart + "&endDate=" + timeEnd + "&status=" + status + "&processDefineCode=" + processDefineCode).addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "分页查询工作流实例");
+        JSONObject dataRet = send(HttpUtil.createGet(url("/projects/" + projectCode + "/process-instances?pageNo=" + page + "&pageSize=" + limit + "&host=" + host + "&startDate=" + timeStart + "&endDate=" + timeEnd + "&status=" + status + "&processDefineCode=" + processDefineCode))
+                .addHeaders(createHeader()), "分页查询工作流实例");
         return dataRet.getJSONObject("data");
     }
 
     public JSONObject queryAllProcessInstance(String projectCode, int pageSize) {
-        HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances?searchVal=&pageSize=" + pageSize + "&pageNo=1&host=&stateType=&startDate=&endDate=&executorName=").addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "查询全部工作流实例");
+        JSONObject dataRet = send(HttpUtil.createGet(url("/projects/" + projectCode + "/process-instances?searchVal=&pageSize=" + pageSize + "&pageNo=1&host=&stateType=&startDate=&endDate=&executorName="))
+                .addHeaders(createHeader()), "查询全部工作流实例");
         return dataRet.getJSONObject("data");
     }
 
@@ -276,32 +285,28 @@ public class DolphinSchedulerTool {
         JSONObject body = new JSONObject();
         body.set("processInstanceId", processInstanceId);
         body.set("executeType", "REPEAT_RUNNING");
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/executors/execute").addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "工作流实例重跑");
+        send(HttpUtil.createPost(url("/projects/" + projectCode + "/executors/execute"))
+                .addHeaders(formHeader()).form(body), "工作流实例重跑");
     }
 
     public String getInstanceLog(int limit, long taskInstanceId) {
-        HttpResponse execute = HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/log/detail?taskInstanceId=" + taskInstanceId + "&skipLineNum=0&limit=" + limit).addHeaders(this.creatHeader()).timeout(this.timeOut).execute();
-        JSONObject returnJson = new JSONObject(execute.body());
-        checkRetCode(returnJson, "获取任务实例日志详情出错！");
+        JSONObject returnJson = send(HttpUtil.createGet(
+                url("/log/detail?taskInstanceId=" + taskInstanceId + "&skipLineNum=0&limit=" + limit))
+                .addHeaders(createHeader()), "获取任务实例日志详情出错！");
         return returnJson.getStr("data");
     }
 
     public JSONObject getDPDispatchInstanceDetail(String projectCode, String instanceId) {
-        HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances/" + instanceId + "/tasks?processInstanceId=" + instanceId).addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
-        JSONObject returnJson = new JSONObject(execute.body());
-        checkRetCode(returnJson, "获取工作流实例详情出错！");
+        JSONObject returnJson = send(HttpUtil.createGet(
+                url("/projects/" + projectCode + "/process-instances/" + instanceId + "/tasks?processInstanceId=" + instanceId))
+                .addHeaders(createHeader()), "获取工作流实例详情出错！");
         return returnJson.getJSONObject("data");
     }
 
     public void delProcessInstances(String projectCode, String[] processInstanceIds) {
         JSONObject body = new JSONObject();
         body.set("processInstanceIds", String.join(",", processInstanceIds));
-        Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
-        HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances/batch-delete").addHeaders(header)).timeout(this.timeOut).form(body).execute();
-        JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "删除工作流实例");
+        send(HttpUtil.createPost(url("/projects/" + projectCode + "/process-instances/batch-delete"))
+                .addHeaders(formHeader()).form(body), "删除工作流实例");
     }
 }

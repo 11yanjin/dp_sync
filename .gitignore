@@ -9,3 +9,5 @@
 .idea/
 # Maven build output
 /target/
+# 测试代码不推送到远端
+/src/test/
