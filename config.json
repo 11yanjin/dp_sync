@@ -19,7 +19,7 @@
   "minuteBegin": 1,
   "tableDispatchBatchSize": 2,
   "tableDispatchBatchInterval": 3,
-  "executeOnce": "yes",
+  "executeImmediately": "yes",
   "prefix": "test_",
   "suffix": "",
   "tables": "test1,test_customers"

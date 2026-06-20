@@ -61,7 +61,7 @@ public class CreateProcess {
         String[] tableArray = tables.split(",");
 
         Map<String, String> fieldMapping = new HashMap<>();
-        if(StrUtil.isBlank(specified)){
+        if(StrUtil.isNotBlank(specified)){
             String[] specifiedArray = specified.split(",");//切分 直接指定值字段
             for (String expr : specifiedArray) {
                 expr = expr.trim();
