@@ -1,4 +1,4 @@
-package dialect;
+package org.example.dpsync.dialect;
 
 import java.sql.SQLException;
 import java.sql.Statement;

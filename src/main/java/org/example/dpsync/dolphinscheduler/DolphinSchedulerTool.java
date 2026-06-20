@@ -1,4 +1,4 @@
-package dolphinscheduler;
+package org.example.dpsync.dolphinscheduler;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.http.HttpResponse;
@@ -6,17 +6,22 @@ import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
-import entity.DPDataSource;
-import entity.DPProcessDefinition;
-import entity.DPProject;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.example.dpsync.entity.DPDataSource;
+import org.example.dpsync.entity.DPProcessDefinition;
+import org.example.dpsync.entity.DPProject;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class DolphinSchedulerTool {
+    private static final Logger log = LogManager.getLogger(DolphinSchedulerTool.class);
+
     private final String dpHttpUrl;
     private final String dpToken;
     private final int timeOut = 10000;
@@ -40,9 +45,8 @@ public class DolphinSchedulerTool {
 
     public void checkRetCode(JSONObject retObj, String errorMsgPrefix) {
         Integer code = retObj.getInt("code");
-        if (0 != code) {
-            System.out.println(errorMsgPrefix + "失败！" + retObj);
-            throw new RuntimeException(errorMsgPrefix + "失败！" + retObj.getStr("msg"));
+        if (code == null || 0 != code) {
+            throw new RuntimeException(errorMsgPrefix + "失败！" + retObj);
         }
     }
 
@@ -70,7 +74,6 @@ public class DolphinSchedulerTool {
         JSONObject queryData = queryResponseJson.getJSONObject("data");
         JSONArray totalList = queryData.getJSONArray("totalList");
         if (totalList.isEmpty()) {
-            System.out.println("DolphinScheduler查询数据源ID失败！");
             throw new RuntimeException("DolphinScheduler查询数据源ID失败！");
         } else {
             return totalList.getJSONObject(0).getStr("id");
@@ -140,7 +143,7 @@ public class DolphinSchedulerTool {
     }
 
     public Map<String, String> queryList(String projectCode) {
-        Map<String, String> processList = new HashMap<>();
+        Map<String, String> processList = new LinkedHashMap<>();
         int pageNo = 1;
         while (true) {
             String url = this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition";
@@ -176,7 +179,7 @@ public class DolphinSchedulerTool {
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-definition/" + processDefinitionCode + "/release").addHeaders(header)).timeout(this.timeOut).form(body).execute();
         JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "生成工作流坐标");
+        this.checkRetCode(dataRet, "工作流上下线");
         return dataRet.getInt("code");
     }
 
@@ -238,7 +241,7 @@ public class DolphinSchedulerTool {
         Map<String, String> header = this.creatHeader("application/x-www-form-urlencoded");
         HttpResponse execute = (HttpUtil.createPost(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/schedules/" + scheduleId + "/" + releaseState).addHeaders(header)).timeout(this.timeOut).execute();
         JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "更新调度器");
+        this.checkRetCode(dataRet, "调度上下线");
         return dataRet.getInt("code");
     }
 
@@ -258,14 +261,14 @@ public class DolphinSchedulerTool {
     public JSONObject queryProcessInstanceListPaging(String projectCode, String processDefineCode, String page, String limit, String timeStart, String timeEnd, String status, String host) {
         HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances?pageNo=" + page + "&pageSize=" + limit + "&host=" + host + "&startDate=" + timeStart + "&endDate=" + timeEnd + "&status=" + status + "&processDefineCode=" + processDefineCode).addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
         JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "更新调度器");
+        this.checkRetCode(dataRet, "分页查询工作流实例");
         return dataRet.getJSONObject("data");
     }
 
     public JSONObject queryAllProcessInstance(String projectCode, int pageSize) {
-        HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances?searchVal=&pageSize=" + pageSize + "&pageNo=1&host=&stateType=&startDate=&endDate=&executorName=&_t=0.9923962552155072").addHeaders(this.creatHeader())).timeout(1500000).execute();
+        HttpResponse execute = (HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/projects/" + projectCode + "/process-instances?searchVal=&pageSize=" + pageSize + "&pageNo=1&host=&stateType=&startDate=&endDate=&executorName=").addHeaders(this.creatHeader())).timeout(this.timeOut).execute();
         JSONObject dataRet = new JSONObject(execute.body());
-        this.checkRetCode(dataRet, "更新调度器");
+        this.checkRetCode(dataRet, "查询全部工作流实例");
         return dataRet.getJSONObject("data");
     }
 
@@ -280,7 +283,7 @@ public class DolphinSchedulerTool {
     }
 
     public String getInstanceLog(int limit, long taskInstanceId) {
-        HttpResponse execute = HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/log/detail?taskInstanceId=" + taskInstanceId + "&skipLineNum=0&limit=" + limit + "&_t=0.1011358573480663").addHeaders(this.creatHeader()).timeout(this.timeOut).execute();
+        HttpResponse execute = HttpUtil.createGet(this.dpHttpUrl + "/dolphinscheduler/log/detail?taskInstanceId=" + taskInstanceId + "&skipLineNum=0&limit=" + limit).addHeaders(this.creatHeader()).timeout(this.timeOut).execute();
         JSONObject returnJson = new JSONObject(execute.body());
         checkRetCode(returnJson, "获取任务实例日志详情出错！");
         return returnJson.getStr("data");

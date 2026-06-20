@@ -1,4 +1,4 @@
-package dialect;
+package org.example.dpsync.dialect;
 
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;

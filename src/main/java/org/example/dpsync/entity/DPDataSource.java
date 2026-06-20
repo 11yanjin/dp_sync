@@ -1,4 +1,4 @@
-package entity;
+package org.example.dpsync.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

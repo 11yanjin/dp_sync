@@ -1,8 +1,11 @@
+package org.example.dpsync;
+
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSONObject;
-import dialect.DialectFactory;
-import dialect.DialectHandler;
-import entity.TableMetaData;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.example.dpsync.dialect.DialectFactory;
+import org.example.dpsync.dialect.DialectHandler;
+import org.example.dpsync.entity.TableMetaData;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -40,19 +43,20 @@ import java.util.TreeMap;
  */
 public class CreateTable {
 
+    private static final Logger log = LogManager.getLogger(CreateTable.class);
+
     // ===================== 对外入口 =====================
 
-    public static void execute(JSONObject config, boolean isRequiresKey) {
-        String inputJdbcUrl   = config.getStr("inputJdbcUrl");
-        String inputUserName  = config.getStr("inputUserName");
-        String inputPassword  = config.getStr("inputPassword");
-        String outputJdbcUrl  = config.getStr("outputJdbcUrl");
-        String outputUserName = config.getStr("outputUserName");
-        String outputPassword = config.getStr("outputPassword");
-        String prefix         = config.getStr("prefix");
-        String suffix         = config.getStr("suffix");
-        String tables         = config.getStr("tables");
-        String[] split        = tables.split(",");
+    public static void execute(SyncConfig config, boolean isRequiresKey) {
+        String inputJdbcUrl   = config.getInputJdbcUrl();
+        String inputUserName  = config.getInputUserName();
+        String inputPassword  = config.getInputPassword();
+        String outputJdbcUrl  = config.getOutputJdbcUrl();
+        String outputUserName = config.getOutputUserName();
+        String outputPassword = config.getOutputPassword();
+        String prefix         = config.getPrefix();
+        String suffix         = config.getSuffix();
+        String[] split        = config.tableArray();
 
         // 从 JDBC URL 中提取数据库类型，由工厂获取对应方言处理器
         String inputType  = extractDatabaseType(inputJdbcUrl);
@@ -73,25 +77,24 @@ public class CreateTable {
 
                     // Writer 侧：类型映射 + schema 替换 + 语法转换
                     String finalDDL = outputDialect.transformDDL(meta.getDdl().toString(), outputSchema);
-                    System.out.println("------------------------------------------------------------");
                     if (!finalDDL.contains("不存在")) {
-                        System.out.printf("%d. %s%n", i++, finalDDL);
+                        log.info("{}. {}", i++, finalDDL);
                         stmt.executeUpdate(finalDDL);
-                        System.out.println(prefix + tableName + suffix + "建表语句已执行");
+                        log.info("{}建表语句已执行", prefix + tableName + suffix);
                         // Writer 侧：写额外注释 SQL（如 PostgreSQL 的 COMMENT ON；MySQL 为空实现）
                         outputDialect.writeTableComments(stmt, outputSchema,
                                 prefix + tableName + suffix, meta.getComments());
                         SQLWarning warning = stmt.getWarnings();
                         while (warning != null) {
-                            System.out.println("注意: " + warning.getMessage());
+                            log.warn("注意: {}", warning.getMessage());
                             warning = warning.getNextWarning();
                         }
                         stmt.clearWarnings(); // mysql会保留所有警告；postgresql仅保留最近一次
                     } else {
-                        System.out.printf("%s%n", finalDDL);
+                        log.warn(finalDDL);
                     }
                 } catch (SQLException e) {
-                    System.err.println("创建表 " + prefix + tableName + suffix +" 时出错: " + e.getMessage());
+                    log.error("创建表 {} 时出错: {}", prefix + tableName + suffix, e.getMessage());
                 }
             }
         } catch (SQLException e) {

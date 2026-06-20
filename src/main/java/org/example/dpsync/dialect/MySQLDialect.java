@@ -1,4 +1,4 @@
-package dialect;
+package org.example.dpsync.dialect;
 
 import cn.hutool.core.util.StrUtil;
 

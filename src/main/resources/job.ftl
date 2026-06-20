@@ -38,7 +38,7 @@
               ${outputColumn}
             ],
             "preSql": [
-              "${preSql1}"
+              <#if preSql1??>"${preSql1}"</#if>
             ],
             "postSql": [
             ],

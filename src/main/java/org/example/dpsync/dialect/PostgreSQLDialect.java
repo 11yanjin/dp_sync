@@ -1,6 +1,8 @@
-package dialect;
+package org.example.dpsync.dialect;
 
 import cn.hutool.core.util.StrUtil;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -25,6 +27,8 @@ import java.util.Map;
  * </ul>
  */
 public class PostgreSQLDialect extends AbstractDialect {
+
+    private static final Logger log = LogManager.getLogger(PostgreSQLDialect.class);
 
     // ──────────────────────── Reader 侧 ────────────────────────
 
@@ -120,11 +124,11 @@ public class PostgreSQLDialect extends AbstractDialect {
         if (StrUtil.isNotBlank(tableComment)) {
             String sql = String.format("COMMENT ON TABLE %s.%s IS '%s';",
                     outputSchema, tableName, tableComment);
-            System.out.println(sql);
+            log.info(sql);
             try {
                 stmt.executeUpdate(sql);
             } catch (SQLException e) {
-                System.err.printf("添加表 %s 注释出错: %s%n", tableName, e.getMessage());
+                log.error("添加表 {} 注释出错: {}", tableName, e.getMessage());
             }
         }
 
@@ -134,11 +138,11 @@ public class PostgreSQLDialect extends AbstractDialect {
             if (isFirst) { isFirst = false; continue; }
             String sql = String.format("COMMENT ON COLUMN %s.%s.%s IS '%s';",
                     outputSchema, tableName, entry.getKey(), entry.getValue());
-            System.out.println(sql);
+            log.info(sql);
             try {
                 stmt.executeUpdate(sql);
             } catch (SQLException e) {
-                System.err.printf("添加字段 %s 注释出错: %s%n", entry.getKey(), e.getMessage());
+                log.error("添加字段 {} 注释出错: {}", entry.getKey(), e.getMessage());
             }
         }
     }

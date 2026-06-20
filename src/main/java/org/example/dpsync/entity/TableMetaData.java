@@ -1,4 +1,4 @@
-package entity;
+package org.example.dpsync.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 @AllArgsConstructor
 public class TableMetaData {
     private StringBuilder ddl;
-    private LinkedHashMap<String, String> Comments;
+    private LinkedHashMap<String, String> comments;
     private String schema;
     private String tableName;
 }
