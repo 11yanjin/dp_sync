@@ -1,4 +1,4 @@
-package org.example.dpsync.dialect;
+package org.example.dolphinsyncgen.dialect;
 
 import cn.hutool.core.util.StrUtil;
 import org.apache.logging.log4j.LogManager;

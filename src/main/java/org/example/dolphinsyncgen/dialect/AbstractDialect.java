@@ -1,4 +1,4 @@
-package org.example.dpsync.dialect;
+package org.example.dolphinsyncgen.dialect;
 
 import java.sql.SQLException;
 import java.sql.Statement;

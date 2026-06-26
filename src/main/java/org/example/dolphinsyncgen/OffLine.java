@@ -1,8 +1,8 @@
-package org.example.dpsync;
+package org.example.dolphinsyncgen;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dpsync.dolphinscheduler.DolphinSchedulerTool;
+import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
 
 import java.util.Map;
 

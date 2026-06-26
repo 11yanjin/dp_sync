@@ -1,11 +1,11 @@
-package org.example.dpsync;
+package org.example.dolphinsyncgen;
 
 import cn.hutool.core.util.StrUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dpsync.dialect.DialectFactory;
-import org.example.dpsync.dialect.DialectHandler;
-import org.example.dpsync.entity.TableMetaData;
+import org.example.dolphinsyncgen.dialect.DialectFactory;
+import org.example.dolphinsyncgen.dialect.DialectHandler;
+import org.example.dolphinsyncgen.entity.TableMetaData;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;

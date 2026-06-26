@@ -1,4 +1,4 @@
-package org.example.dpsync.dialect;
+package org.example.dolphinsyncgen.dialect;
 
 import java.util.HashMap;
 import java.util.Map;

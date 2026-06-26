@@ -1,4 +1,4 @@
-package org.example.dpsync.dolphinscheduler;
+package org.example.dolphinsyncgen.dolphinscheduler;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.http.HttpRequest;
@@ -8,9 +8,9 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dpsync.entity.DPDataSource;
-import org.example.dpsync.entity.DPProcessDefinition;
-import org.example.dpsync.entity.DPProject;
+import org.example.dolphinsyncgen.entity.DPDataSource;
+import org.example.dolphinsyncgen.entity.DPProcessDefinition;
+import org.example.dolphinsyncgen.entity.DPProject;
 
 import java.util.ArrayList;
 import java.util.Date;

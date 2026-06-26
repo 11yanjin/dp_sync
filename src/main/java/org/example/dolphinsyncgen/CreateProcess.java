@@ -1,4 +1,4 @@
-package org.example.dpsync;
+package org.example.dolphinsyncgen;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.template.Template;
@@ -6,10 +6,10 @@ import cn.hutool.extra.template.TemplateConfig;
 import cn.hutool.extra.template.TemplateUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dpsync.dolphinscheduler.DataXTaskBuilder;
-import org.example.dpsync.dolphinscheduler.DolphinSchedulerTool;
-import org.example.dpsync.entity.DPProcessDefinition;
-import org.example.dpsync.entity.DPProject;
+import org.example.dolphinsyncgen.dolphinscheduler.DataXTaskBuilder;
+import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
+import org.example.dolphinsyncgen.entity.DPProcessDefinition;
+import org.example.dolphinsyncgen.entity.DPProject;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

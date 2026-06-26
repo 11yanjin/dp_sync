@@ -1,4 +1,4 @@
-package org.example.dpsync.entity;
+package org.example.dolphinsyncgen.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

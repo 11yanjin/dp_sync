@@ -1,4 +1,4 @@
-package org.example.dpsync;
+package org.example.dolphinsyncgen;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;

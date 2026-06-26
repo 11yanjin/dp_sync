@@ -1,4 +1,4 @@
-package org.example.dpsync;
+package org.example.dolphinsyncgen;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.template.Template;
@@ -8,8 +8,8 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dpsync.dialect.HiveDialect;
-import org.example.dpsync.dolphinscheduler.DolphinSchedulerTool;
+import org.example.dolphinsyncgen.dialect.HiveDialect;
+import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
 
 import java.net.URI;
 import java.sql.Connection;

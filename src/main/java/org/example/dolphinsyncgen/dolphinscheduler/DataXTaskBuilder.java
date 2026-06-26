@@ -1,4 +1,4 @@
-package org.example.dpsync.dolphinscheduler;
+package org.example.dolphinsyncgen.dolphinscheduler;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;

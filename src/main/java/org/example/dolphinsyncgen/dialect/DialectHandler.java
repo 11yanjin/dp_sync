@@ -1,4 +1,4 @@
-package org.example.dpsync.dialect;
+package org.example.dolphinsyncgen.dialect;
 
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
